@@ -25,26 +25,38 @@ import {
 } from './imageProcessor.js';
 import { detectTemplateScale, convertFromSource, MAPPING_PROVENANCE } from './converter.js';
 import { createZip } from './zipWriter.js';
+import { signatureFromBlob, matchShirtsAndPants, mergeOutfit } from './outfitMerger.js';
 
 const MAX_FILES_PER_KIND = 20;
 const HISTORY_LIMIT = 5; // a run can hold up to 40 images, so history stays small
-const KINDS = ['shirt', 'pants'];
+const KINDS = ['shirt', 'pants']; // upload/queue kinds
+const RESULT_KINDS = ['shirt', 'pants', 'merged']; // result kinds (merged is derived, not uploaded)
 
 /** @typedef {{id:string, file:File, width:number|null, height:number|null, valid:boolean, error:string|null, previewURL:string|null}} QueueItem */
 /** @typedef {{id:string, title:string, blob:Blob, url:string, beforeURL:string, sourceFile:File, outputWidth:number, outputHeight:number, originalWidth:number, originalHeight:number}} ResultItem */
+/** @typedef {{id:string, title:string, blob:Blob, url:string, size:number}} MergedItem */
 
 let nextQueueId = 1;
+let nextMergeId = 1;
 
 const state = {
   /** @type {{shirt: QueueItem[], pants: QueueItem[]}} */
   queue: { shirt: [], pants: [] },
   /** @type {{shirt: ResultItem[], pants: ResultItem[]}} */
   results: { shirt: [], pants: [] },
+  /** @type {MergedItem[]} */
+  merged: [],
   settings: loadSettings(),
   history: [], // see pushHistory() for shape
   historyIndex: -1,
   converting: false,
 };
+
+/** Returns the live result array for any of the three result kinds. */
+function getResultArray(kind) {
+  if (kind === 'merged') return state.merged;
+  return state.results[kind];
+}
 
 // ---------------------------------------------------------------------
 // Settings persistence
@@ -59,9 +71,10 @@ function loadSettings() {
       smoothing: stored.smoothing ?? true,
       autoDownload: stored.autoDownload ?? false,
       outputFormat: stored.outputFormat ?? 'png',
+      autoMerge: stored.autoMerge ?? false,
     };
   } catch {
-    return { smoothing: true, autoDownload: false, outputFormat: 'png' };
+    return { smoothing: true, autoDownload: false, outputFormat: 'png', autoMerge: false };
   }
 }
 
@@ -174,6 +187,8 @@ function applySettingsToControls() {
   }
   const autoDownload = document.getElementById('auto-download');
   if (autoDownload) autoDownload.checked = state.settings.autoDownload;
+  const autoMerge = document.getElementById('auto-merge');
+  if (autoMerge) autoMerge.checked = state.settings.autoMerge;
 }
 
 // ---------------------------------------------------------------------
@@ -338,6 +353,12 @@ async function handleConvert() {
   state.results = newResults;
   renderAllResults();
 
+  if (state.settings.autoMerge) {
+    await recomputeMerges();
+  } else {
+    clearMerges();
+  }
+
   state.converting = false;
   ui.setProgress(null);
 
@@ -376,13 +397,84 @@ function renderAllResults() {
 }
 
 function handleRemoveResult(kind, id) {
-  const index = state.results[kind].findIndex((r) => r.id === id);
+  const array = getResultArray(kind);
+  const index = array.findIndex((r) => r.id === id);
   if (index === -1) return;
-  const [removed] = state.results[kind].splice(index, 1);
+  const [removed] = array.splice(index, 1);
   revokeSafe(removed.url);
-  revokeSafe(removed.beforeURL);
-  renderAllResults();
+  if (kind !== 'merged') revokeSafe(removed.beforeURL);
+  if (kind === 'merged') renderMergedResultsUI();
+  else renderAllResults();
   refreshButtons();
+}
+
+// ---------------------------------------------------------------------
+// Outfit merging (optional -- see outfitMerger.js for the algorithm)
+// ---------------------------------------------------------------------
+
+function renderMergedResultsUI() {
+  ui.renderMergedResults(state.merged.map((m) => ({ id: m.id, title: m.title, imageURL: m.url, size: m.size })));
+}
+
+function clearMerges() {
+  for (const m of state.merged) revokeSafe(m.url);
+  state.merged = [];
+  renderMergedResultsUI();
+}
+
+/**
+ * Pairs every current shirt result with its closest-color pants result
+ * (see outfitMerger.js — a documented best-effort heuristic, not a
+ * guaranteed-correct match) and merges each pair into one combined file.
+ * Only called when auto-merge is on and both shirt and pants results
+ * exist; a no-op with an empty merged set otherwise.
+ */
+async function recomputeMerges() {
+  for (const m of state.merged) revokeSafe(m.url);
+  state.merged = [];
+
+  const shirts = state.results.shirt;
+  const pants = state.results.pants;
+  if (shirts.length === 0 || pants.length === 0) {
+    renderMergedResultsUI();
+    return;
+  }
+
+  ui.setStatus('Matching shirts with pants by color…', 'info');
+
+  let shirtSignatures;
+  let pantsSignatures;
+  try {
+    [shirtSignatures, pantsSignatures] = await Promise.all([
+      Promise.all(shirts.map((r) => signatureFromBlob(r.blob))),
+      Promise.all(pants.map((r) => signatureFromBlob(r.blob))),
+    ]);
+  } catch (error) {
+    ui.showToast(`Could not analyze colors for merging: ${error.message}`, 'error');
+    renderMergedResultsUI();
+    return;
+  }
+
+  const matches = matchShirtsAndPants(shirtSignatures, pantsSignatures);
+
+  for (const match of matches) {
+    const shirtResult = shirts[match.shirtIndex];
+    const pantsResult = pants[match.pantsIndex];
+    try {
+      const { blob, size } = await mergeOutfit(shirtResult.blob, pantsResult.blob);
+      state.merged.push({
+        id: String(nextMergeId++),
+        title: `${shirtResult.title} + ${pantsResult.title}`,
+        blob,
+        url: URL.createObjectURL(blob),
+        size,
+      });
+    } catch (error) {
+      ui.showToast(`Could not merge "${shirtResult.title}" + "${pantsResult.title}": ${error.message}`, 'error');
+    }
+  }
+
+  renderMergedResultsUI();
 }
 
 // ---------------------------------------------------------------------
@@ -402,6 +494,7 @@ function handleReset() {
   }
 
   renderAllResults();
+  clearMerges();
   ui.setProgress(null);
   ui.setStatus('Upload shirt and/or pants templates to begin (up to 20 each).');
   refreshButtons();
@@ -416,15 +509,18 @@ function handleReset() {
 function computeFilenames() {
   const shirtCount = state.results.shirt.length;
   const pantsCount = state.results.pants.length;
-  if (shirtCount + pantsCount === 1) {
+  const mergedCount = state.merged.length;
+  if (shirtCount + pantsCount + mergedCount === 1) {
     return {
       shirt: shirtCount === 1 ? ['Polytoria_Template.png'] : [],
       pants: pantsCount === 1 ? ['Polytoria_Template.png'] : [],
+      merged: [],
     };
   }
   return {
     shirt: state.results.shirt.map((_, i) => `Polytoria_Shirt_${i + 1}.png`),
     pants: state.results.pants.map((_, i) => `Polytoria_Pants_${i + 1}.png`),
+    merged: state.merged.map((_, i) => `Polytoria_Outfit_${i + 1}.png`),
   };
 }
 
@@ -444,14 +540,15 @@ function triggerBlobDownload(blob, filename) {
 }
 
 function handleDownloadSingle(kind, id) {
-  const index = state.results[kind].findIndex((r) => r.id === id);
+  const array = getResultArray(kind);
+  const index = array.findIndex((r) => r.id === id);
   if (index === -1) return;
   const filenames = computeFilenames();
-  triggerBlobDownload(state.results[kind][index].blob, filenames[kind][index]);
+  triggerBlobDownload(array[index].blob, filenames[kind][index]);
 }
 
 function handleDownloadAll() {
-  const total = state.results.shirt.length + state.results.pants.length;
+  const total = state.results.shirt.length + state.results.pants.length + state.merged.length;
   if (total === 0) {
     ui.showToast('Nothing to download yet — convert a template first.', 'info');
     return;
@@ -464,8 +561,8 @@ function handleDownloadAll() {
   }
   const filenames = computeFilenames();
   let delayIndex = 0;
-  for (const kind of KINDS) {
-    state.results[kind].forEach((result, index) => {
+  for (const kind of RESULT_KINDS) {
+    getResultArray(kind).forEach((result, index) => {
       const filename = filenames[kind][index];
       setTimeout(() => triggerBlobDownload(result.blob, filename), delayIndex * 250);
       delayIndex += 1;
@@ -474,7 +571,7 @@ function handleDownloadAll() {
 }
 
 async function handleDownloadZip() {
-  const total = state.results.shirt.length + state.results.pants.length;
+  const total = state.results.shirt.length + state.results.pants.length + state.merged.length;
   if (total === 0) {
     ui.showToast('Nothing to download yet — convert a template first.', 'info');
     return;
@@ -483,9 +580,10 @@ async function handleDownloadZip() {
   try {
     const filenames = computeFilenames();
     const entries = [];
-    for (const kind of KINDS) {
-      for (let index = 0; index < state.results[kind].length; index += 1) {
-        const result = state.results[kind][index];
+    for (const kind of RESULT_KINDS) {
+      const array = getResultArray(kind);
+      for (let index = 0; index < array.length; index += 1) {
+        const result = array[index];
         entries.push({ name: filenames[kind][index], data: new Uint8Array(await result.blob.arrayBuffer()) });
       }
     }
@@ -532,11 +630,34 @@ function cloneResultFromHistory(entryResult) {
   };
 }
 
+/** Clones a live merged item into an entry-owned copy with its own independent URL. */
+function cloneMergedForHistory(merged) {
+  return {
+    id: merged.id,
+    title: merged.title,
+    blob: merged.blob,
+    url: URL.createObjectURL(merged.blob),
+    size: merged.size,
+  };
+}
+
+/** Clones an entry's merged item into a fresh live-owned copy (mirrors cloneMergedForHistory). */
+function cloneMergedFromHistory(entryMerged) {
+  return {
+    id: entryMerged.id,
+    title: entryMerged.title,
+    blob: entryMerged.blob,
+    url: URL.createObjectURL(entryMerged.blob),
+    size: entryMerged.size,
+  };
+}
+
 function historySummaries() {
   return state.history.map((entry) => ({
     timestamp: entry.timestamp,
     shirtCount: entry.shirtCount,
     pantsCount: entry.pantsCount,
+    mergedCount: entry.mergedCount,
   }));
 }
 
@@ -550,9 +671,11 @@ function pushHistory() {
     timestamp: Date.now(),
     shirtCount: state.results.shirt.length,
     pantsCount: state.results.pants.length,
+    mergedCount: state.merged.length,
     results: {
       shirt: state.results.shirt.map(cloneResultForHistory),
       pants: state.results.pants.map(cloneResultForHistory),
+      merged: state.merged.map(cloneMergedForHistory),
     },
   };
 
@@ -575,6 +698,7 @@ function revokeEntryUrls(entry) {
       revokeSafe(result.beforeURL);
     }
   }
+  for (const merged of entry.results.merged) revokeSafe(merged.url);
 }
 
 function restoreHistoryEntry(index) {
@@ -589,13 +713,16 @@ function restoreHistoryEntry(index) {
       revokeSafe(result.beforeURL);
     }
   }
+  for (const merged of state.merged) revokeSafe(merged.url);
 
   state.results = {
     shirt: entry.results.shirt.map(cloneResultFromHistory),
     pants: entry.results.pants.map(cloneResultFromHistory),
   };
+  state.merged = entry.results.merged.map(cloneMergedFromHistory);
 
   renderAllResults();
+  renderMergedResultsUI();
   ui.renderHistory(historySummaries(), state.historyIndex);
   ui.setUndoRedoEnabled(state.historyIndex > 0, state.historyIndex < state.history.length - 1);
   ui.setStatus(`Restored conversion from ${new Date(entry.timestamp).toLocaleTimeString()}.`);
@@ -619,8 +746,8 @@ function handleRedo() {
 function refreshButtons() {
   const hasValidQueueItems = KINDS.some((k) => state.queue[k].some((item) => item.valid));
   const hasAnyQueueItems = KINDS.some((k) => state.queue[k].length > 0);
-  const hasResults = KINDS.some((k) => state.results[k].length > 0);
-  const hasMultipleResults = state.results.shirt.length + state.results.pants.length > 1;
+  const hasResults = KINDS.some((k) => state.results[k].length > 0) || state.merged.length > 0;
+  const hasMultipleResults = state.results.shirt.length + state.results.pants.length + state.merged.length > 1;
 
   ui.setButtonsEnabled({
     convert: hasValidQueueItems && !state.converting,

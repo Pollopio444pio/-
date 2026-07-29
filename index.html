@@ -100,6 +100,11 @@
         <h2>Pants <span class="badge" id="pants-result-count">0</span></h2>
         <div class="result-grid" id="pants-results-grid"></div>
       </div>
+      <div class="result-group" id="result-group-merged" hidden>
+        <h2>Merged Outfits <span class="badge" id="merged-result-count">0</span></h2>
+        <p class="result-hint">Shirt + pants pairs auto-matched by color similarity, combined into one file each. This is a best-effort match, not a guarantee — check each pairing before using it.</p>
+        <div class="result-grid" id="merged-results-grid"></div>
+      </div>
     </section>
 
     <!-- ============================== HISTORY ============================== -->
@@ -130,6 +135,13 @@
           <input type="checkbox" id="auto-download" />
           Auto-download after each conversion
         </label>
+      </div>
+      <div class="settings-group">
+        <label class="checkbox-row" for="auto-merge">
+          <input type="checkbox" id="auto-merge" />
+          Merge matching shirt + pants into one outfit file
+        </label>
+        <p class="settings-hint">Optional. Auto-pairs shirts and pants by color similarity (up to 20 pairs) and combines each pair into a single downloadable template.</p>
       </div>
 
       <details class="mapping-info" open>
@@ -207,6 +219,32 @@
         </div>
         <span class="compare-tag compare-tag-before">Original</span>
         <span class="compare-tag compare-tag-after">Polytoria</span>
+      </div>
+
+      <div class="result-controls">
+        <label class="field-inline">
+          Zoom
+          <input type="range" class="result-zoom" min="50" max="400" value="100" step="10" aria-label="Zoom preview" />
+          <span class="result-zoom-value">100%</span>
+        </label>
+        <div class="result-buttons">
+          <button type="button" class="btn btn-primary btn-download-single">Download</button>
+          <button type="button" class="btn btn-ghost btn-remove-result" aria-label="Remove this result">Remove</button>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <template id="merged-card-template">
+    <article class="result-card merged-card">
+      <header class="result-head">
+        <h3 class="result-title"></h3>
+        <p class="result-meta"></p>
+      </header>
+
+      <div class="merged-preview">
+        <div class="compare-checker" aria-hidden="true"></div>
+        <img class="merged-img" alt="Merged outfit template" />
       </div>
 
       <div class="result-controls">

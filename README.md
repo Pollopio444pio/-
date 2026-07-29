@@ -76,8 +76,9 @@ intentional, not a bug, and matches both reference converters.
   `STORE` method so PNGs aren't needlessly re-compressed) — recommended for
   batches.
 - Automatic file naming: `Polytoria_Template.png` when there's a single
-  result; `Polytoria_Shirt_1.png`, `Polytoria_Pants_1.png`, etc. (numbered
-  per garment type) for batches.
+  result; `Polytoria_Shirt_1.png`, `Polytoria_Pants_1.png`,
+  `Polytoria_Outfit_1.png`, etc. (numbered per garment type) for batches.
+- **Optional outfit merging** — see below.
 - Session conversion history (up to 5 runs, since a run can hold up to 40
   images) with Undo/Redo.
 - Light/dark theme, persisted across visits.
@@ -87,6 +88,34 @@ intentional, not a bug, and matches both reference converters.
   status/progress, labeled controls, visible focus states.
 - 100% client-side: templates are decoded and processed in-memory and never
   leave the device — there is no server component at all.
+
+### Merging shirt + pants into one outfit file
+
+Turn on **"Merge matching shirt + pants into one outfit file"** in Settings
+(off by default — this is opt-in) to also get combined outfit downloads
+alongside the normal per-garment results.
+
+- After converting, if both shirt and pants results exist, the app samples
+  a coarse 8×8 grid of average colors from each converted image (ignoring
+  transparent panel gaps) and greedily pairs each shirt with the closest-
+  matching pants by color distance — the single closest pair first, then
+  the next-closest among what's left, and so on.
+- Each matched pair is drawn onto one combined canvas. This is a plain
+  stack, not a blend: a shirt's panels (torso + both arms) and a pants'
+  panels (both legs) occupy disjoint regions of the same Polytoria layout,
+  verified directly against Polytoria's own Expert Template, so there's
+  nothing to composite or mask. The combined canvas uses the larger of the
+  two native sizes, so pairing an HD shirt with a base-resolution pants (or
+  vice versa) never loses quality.
+- Merged outputs appear in their own **Merged Outfits** section as
+  `Polytoria_Outfit_N.png`, and are included in Download all / Download ZIP.
+  They are purely additive — the individual shirt and pants results used to
+  build them are never hidden or removed.
+- **This is a best-effort heuristic, not a guarantee.** Color similarity is
+  a reasonable proxy for "these were designed together," but it isn't
+  perfect — a wardrobe with multiple garments in very similar colors can
+  get paired incorrectly. Always check each merged card before relying on
+  it; the individual shirt/pants downloads are still there as a fallback.
 
 ## Architecture
 
@@ -102,6 +131,7 @@ directly by the browser.
 | `imageProcessor.js` | Environment-agnostic canvas/image I/O primitives (works in both Window and Worker contexts). |
 | `worker.js` | Background thread entry point; delegates to `converter.js`/`imageProcessor.js`. |
 | `zipWriter.js` | Minimal dependency-free ZIP (STORE method) builder. |
+| `outfitMerger.js` | Optional color-similarity shirt/pants pairing and outfit merging. |
 | `ui.js` | All DOM rendering and event wiring, decoupled from app state. |
 
 ## Running locally

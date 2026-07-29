@@ -541,6 +541,26 @@ select {
   transition: transform var(--dur-fast) var(--ease);
 }
 
+.merged-preview {
+  position: relative;
+  margin-top: var(--space-4);
+  aspect-ratio: 1 / 1;
+  max-height: 480px;
+  border-radius: var(--radius-md);
+  overflow: auto;
+  border: 1px solid var(--border);
+}
+.merged-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform-origin: center;
+  transition: transform var(--dur-fast) var(--ease);
+}
+.merged-card { border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
+
 /* Both wraps clip complementarily (never overlapping) so the "before" image
    can never bleed through the "after" image's transparent regions or vice
    versa -- only the checkerboard shows through transparency, never the
@@ -695,6 +715,7 @@ select {
 .settings-panel { display: flex; flex-direction: column; gap: var(--space-4); }
 .settings-group { display: flex; flex-direction: column; gap: var(--space-2); }
 .settings-label { font-weight: 700; font-size: 0.9rem; }
+.settings-hint { margin: 0; font-size: 0.78rem; color: var(--text-faint); padding-left: 1.6rem; }
 .radio-row, .checkbox-row { display: flex; flex-direction: column; gap: var(--space-1); font-size: 0.88rem; color: var(--text-dim); }
 .radio-row label, .checkbox-row { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
 

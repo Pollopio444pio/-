@@ -5,24 +5,30 @@
  *
  * MAPPING PROVENANCE (read this before touching the coordinate tables)
  * ------------------------------------------------------------------------
- * Polytoria has not published an official pixel-mapping specification
- * between the classic Roblox clothing template and its own template.
- * Inventing coordinates would silently produce wrong output, so instead
- * the region tables below were cross-referenced against TWO independent,
- * open-source, community-built converters that are already in use by the
- * Polytoria community and agree with each other to within rounding:
+ * Polytoria has not published a written pixel-mapping specification
+ * between the classic Roblox clothing template and its own template, so
+ * these coordinates were not invented -- they were built up in two
+ * independent verification passes:
  *
- *   1. ScoofyTheFox/Rblx-2-Polytoria-Converter (clothing-converter.html)
- *      https://github.com/ScoofyTheFox/Rblx-2-Polytoria-Converter (MIT)
- *   2. INEEDCHATPROGRAAAAAMS/Roblox---Polytoria-Texture-Converter (transfer.py)
- *      https://github.com/INEEDCHATPROGRAAAAAMS/Roblox---Polytoria-Texture-Converter
+ *   1. Cross-referenced against TWO independent, open-source,
+ *      community-built converters already in use by the Polytoria
+ *      community, which agree with each other to within rounding:
+ *        - ScoofyTheFox/Rblx-2-Polytoria-Converter (clothing-converter.html)
+ *          https://github.com/ScoofyTheFox/Rblx-2-Polytoria-Converter (MIT)
+ *        - INEEDCHATPROGRAAAAAMS/Roblox---Polytoria-Texture-Converter
+ *          https://github.com/INEEDCHATPROGRAAAAAMS/Roblox---Polytoria-Texture-Converter
+ *   2. Pixel-verified directly against Polytoria's own official "Expert
+ *      Template" PNG (downloaded from polytoria.com/store/create/clothing).
+ *      That file is a 1024x1024 opaque/transparent mask with zero color
+ *      content -- every POLY_* rectangle below was overlaid on it and
+ *      confirmed to align with the opaque region boundaries exactly,
+ *      pixel-for-pixel, for all 30 named faces across torso/arms/legs.
  *
- * Both tools independently encode the same face rectangles (torso, arms,
- * legs, caps) and the same left/right mirroring convention described
- * below. That agreement is the closest thing available to "ground truth"
- * without an official spec.
+ * That second pass is the strongest evidence available short of Polytoria
+ * publishing written coordinates, since it's Polytoria's own asset, not a
+ * third party's interpretation of it.
  *
- * IF POLYTORIA PUBLISHES AN OFFICIAL TEMPLATE SPEC, update only the
+ * IF POLYTORIA CHANGES THE OFFICIAL TEMPLATE, update only the
  * *_REGIONS constants below -- every other module consumes them
  * indirectly and needs no changes. That is the reason this file exists
  * as its own module instead of being inlined into the pipeline.
@@ -146,12 +152,13 @@ const POLY_LEFT_LEG = {
 export const MAPPING_PROVENANCE = {
   official: false,
   summary:
-    'Region mapping is community reverse-engineered, cross-referenced from two ' +
-    'independent open-source converters. No official Polytoria template spec has ' +
-    'been published as of this build.',
+    'Region mapping was cross-referenced against two independent open-source converters, ' +
+    'then pixel-verified directly against Polytoria’s own official Expert Template mask -- ' +
+    'every panel rectangle aligns exactly with its opaque region, pixel-for-pixel.',
   sources: [
     'https://github.com/ScoofyTheFox/Rblx-2-Polytoria-Converter',
     'https://github.com/INEEDCHATPROGRAAAAAMS/Roblox---Polytoria-Texture-Converter',
+    'Polytoria Expert Template (polytoria.com/store/create/clothing) -- pixel-verified overlay',
   ],
 };
 

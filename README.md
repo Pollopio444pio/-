@@ -32,20 +32,30 @@ you never have to manually cut and paste pixels in an image editor.
 
 ### Mapping provenance — read this before trusting the output blindly
 
-Polytoria has **not published an official pixel-mapping specification**
-between the two template formats. Rather than invent coordinates, the region
-tables in [`converter.js`](./converter.js) were cross-referenced against two
-independent, open-source, community-built converters already used by the
-Polytoria community, which agree with each other to within rounding:
+Polytoria has not published a written pixel-mapping specification between
+the two template formats, so the region tables in
+[`converter.js`](./converter.js) were verified in two passes rather than
+invented:
 
-- [ScoofyTheFox/Rblx-2-Polytoria-Converter](https://github.com/ScoofyTheFox/Rblx-2-Polytoria-Converter) (MIT)
-- [INEEDCHATPROGRAAAAAMS/Roblox---Polytoria-Texture-Converter](https://github.com/INEEDCHATPROGRAAAAAMS/Roblox---Polytoria-Texture-Converter)
+1. Cross-referenced against two independent, open-source, community-built
+   converters already used by the Polytoria community, which agree with
+   each other to within rounding:
+   - [ScoofyTheFox/Rblx-2-Polytoria-Converter](https://github.com/ScoofyTheFox/Rblx-2-Polytoria-Converter) (MIT)
+   - [INEEDCHATPROGRAAAAAMS/Roblox---Polytoria-Texture-Converter](https://github.com/INEEDCHATPROGRAAAAAMS/Roblox---Polytoria-Texture-Converter)
+2. **Pixel-verified directly against Polytoria's own official "Expert
+   Template"** (downloaded from `polytoria.com/store/create/clothing`).
+   That file is a 1024×1024 opaque/transparent mask with no color content —
+   every `POLY_*` rectangle in `converter.js` was overlaid on it and
+   confirmed to align exactly, pixel-for-pixel, with the opaque region
+   boundaries for all 30 named faces across the torso, both arms, and both
+   legs. This is the strongest evidence available short of Polytoria
+   publishing written coordinates, since it's Polytoria's own asset rather
+   than a third party's interpretation of it.
 
-That cross-agreement is the closest available substitute for an official
-spec, but it **is still unofficial**. The app surfaces this openly in its
-"About the conversion mapping" panel. If Polytoria ever publishes an
-official template, only the `*_REGIONS` constants at the top of
-`converter.js` need to change — every other module consumes them indirectly.
+The app surfaces this openly in its "About the conversion mapping" panel.
+If Polytoria ever changes the official template, only the `*_REGIONS`
+constants at the top of `converter.js` need to change — every other module
+consumes them indirectly.
 
 A second, confirmed-non-obvious detail baked into the mapping: **Roblox's
 Right Arm maps to Polytoria's Left Arm slot, and vice versa** — the two
@@ -148,9 +158,10 @@ conversion instead of failing.
 - **Clothing-type detection is zone-based, not pixel-based** — see "Mapping
   provenance" above for why that's a property of the source format, not a
   shortcut taken by this app.
-- **The region mapping is community-verified, not officially published** by
-  Polytoria. See the in-app "About the conversion mapping" panel and the
-  provenance section above.
+- **The region mapping has no written official spec**, but is pixel-verified
+  directly against Polytoria's own Expert Template asset (see "Mapping
+  provenance" above) — the strongest confirmation available short of
+  Polytoria publishing coordinates in writing.
 - **Artwork painted continuously across panel edges will show a seam after
   conversion.** Each panel (torso front, sleeve, etc.) is individually placed
   at its geometrically correct spot in the Polytoria layout — verified by

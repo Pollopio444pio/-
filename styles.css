@@ -48,8 +48,8 @@ body[data-theme='dark'] {
   --warning: #ffb454;
   --shadow-sm: 0 4px 16px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 24px 64px rgba(6, 8, 20, 0.55);
-  --checker-a: #1c2130;
-  --checker-b: #262c40;
+  --checker-a: #12151f;
+  --checker-b: #171b27;
   --glass-blur: blur(18px);
 }
 
@@ -71,8 +71,8 @@ body[data-theme='light'] {
   --warning: #c8790f;
   --shadow-sm: 0 4px 16px rgba(30, 34, 60, 0.08);
   --shadow-lg: 0 24px 64px rgba(30, 34, 60, 0.16);
-  --checker-a: #e4e7f0;
-  --checker-b: #d3d7e6;
+  --checker-a: #eef0f7;
+  --checker-b: #e6e9f2;
   --glass-blur: blur(18px);
 }
 
@@ -437,8 +437,8 @@ select {
     linear-gradient(-45deg, var(--checker-a) 25%, transparent 25%),
     linear-gradient(45deg, transparent 75%, var(--checker-a) 75%),
     linear-gradient(-45deg, transparent 75%, var(--checker-a) 75%);
-  background-size: 24px 24px;
-  background-position: 0 0, 0 12px, 12px -12px, -12px 0;
+  background-size: 44px 44px;
+  background-position: 0 0, 0 22px, 22px -22px, -22px 0;
   background-color: var(--checker-b);
 }
 

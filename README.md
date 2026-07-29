@@ -1,20 +1,162 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Roblox → Polytoria Converter
 
-# Run and deploy your AI Studio app
+Convert classic Roblox shirt/pants clothing templates into Polytoria "PT 2.0"
+templates instantly, entirely inside your browser. No backend, no uploads,
+no accounts — drop a PNG in, get a Polytoria-ready PNG out.
 
-This contains everything you need to run your app locally.
+## Why this exists
 
-View your app in AI Studio: https://ai.studio/apps/drive/1V_I_xtF76UZ7rNGXjXf2alPjUhqqw2YE
+Polytoria's clothing system uses a different UV layout than Roblox's classic
+template, so a Roblox shirt/pants PNG can't be uploaded to Polytoria as-is.
+This app automates the region-by-region remap (torso, arms, legs, caps) so
+you never have to manually cut and paste pixels in an image editor.
 
-## Run Locally
+## How the conversion works
 
-**Prerequisites:**  Node.js
+1. You drop a Roblox template (585×559, or an HD multiple of it) into the
+   **Shirt** or **Pants** zone. Which zone receives the file *is* the type
+   detection — Roblox's classic shirt and pants templates share the exact
+   same pixel layout, so there is no way to tell them apart from pixel data
+   alone (see "Mapping provenance" below). This still means zero manual
+   editing: you never touch a pixel yourself.
+2. The app validates the file (must be a real PNG, roughly the right aspect
+   ratio) and rejects anything else with a clear, non-crashing error.
+3. Each named face — torso front/back/left/right/top/bottom, both arms
+   (shirts), both legs (pants), and their caps — is cropped from its Roblox
+   source rectangle and drawn into its Polytoria destination rectangle on a
+   1024×1024 (or larger, for HD input) canvas. The alpha channel is
+   preserved throughout; nothing is flattened onto a background.
+4. Everything above runs inside a **Web Worker** using `OffscreenCanvas`, so
+   the UI never freezes — even on large HD templates — with a same-thread
+   fallback for browsers that lack `OffscreenCanvas`.
 
+### Mapping provenance — read this before trusting the output blindly
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Polytoria has **not published an official pixel-mapping specification**
+between the two template formats. Rather than invent coordinates, the region
+tables in [`converter.js`](./converter.js) were cross-referenced against two
+independent, open-source, community-built converters already used by the
+Polytoria community, which agree with each other to within rounding:
+
+- [ScoofyTheFox/Rblx-2-Polytoria-Converter](https://github.com/ScoofyTheFox/Rblx-2-Polytoria-Converter) (MIT)
+- [INEEDCHATPROGRAAAAAMS/Roblox---Polytoria-Texture-Converter](https://github.com/INEEDCHATPROGRAAAAAMS/Roblox---Polytoria-Texture-Converter)
+
+That cross-agreement is the closest available substitute for an official
+spec, but it **is still unofficial**. The app surfaces this openly in its
+"About the conversion mapping" panel. If Polytoria ever publishes an
+official template, only the `*_REGIONS` constants at the top of
+`converter.js` need to change — every other module consumes them indirectly.
+
+A second, confirmed-non-obvious detail baked into the mapping: **Roblox's
+Right Arm maps to Polytoria's Left Arm slot, and vice versa** — the two
+platforms disagree on which side is "left" in template space. This is
+intentional, not a bug, and matches both reference converters.
+
+## Features
+
+- Drag-and-drop (or click-to-browse) upload for Shirt and Pants, PNG only.
+- Fully automatic conversion — no manual pixel editing at any point.
+- Before/after comparison slider with a checkerboard background (so
+  transparency is easy to inspect) and independent zoom per result.
+- Per-garment **Download Polytoria Template** button, a toolbar **Download**
+  (all current results) and **Download ZIP** (dependency-free ZIP writer,
+  `STORE` method so PNGs aren't needlessly re-compressed).
+- Automatic, spec-compliant file naming: `Polytoria_Template.png` for a
+  single result, `Polytoria_Template_1.png` / `_2.png` when both shirt and
+  pants are converted together.
+- Session conversion history with Undo/Redo.
+- Light/dark theme, persisted across visits.
+- Keyboard shortcuts: `Ctrl/Cmd+O` open, `Ctrl/Cmd+S` download, `Ctrl/Cmd+R`
+  reset, `Ctrl/Cmd+Z` / `Ctrl/Cmd+Y` undo/redo.
+- Full keyboard and screen-reader support: operable drop zones, `aria-live`
+  status/progress, labeled controls, visible focus states.
+- 100% client-side: templates are decoded and processed in-memory and never
+  leave the device — there is no server component at all.
+
+## Architecture
+
+Zero build step, zero runtime dependencies — plain ES modules loaded
+directly by the browser.
+
+| File | Responsibility |
+| --- | --- |
+| `index.html` | Semantic page structure and ARIA wiring. |
+| `styles.css` | Design system: theming, glassmorphism, layout, motion. |
+| `app.js` | Application state, orchestration, worker bridge, downloads, history. |
+| `converter.js` | Roblox↔Polytoria region tables and the pure conversion algorithm. |
+| `imageProcessor.js` | Environment-agnostic canvas/image I/O primitives (works in both Window and Worker contexts). |
+| `worker.js` | Background thread entry point; delegates to `converter.js`/`imageProcessor.js`. |
+| `zipWriter.js` | Minimal dependency-free ZIP (STORE method) builder. |
+| `ui.js` | All DOM rendering and event wiring, decoupled from app state. |
+
+## Running locally
+
+No install step is required for the app itself (there are no runtime
+dependencies to fetch). Serve the folder with any static file server, e.g.:
+
+```bash
+npm run dev
+# or simply:
+npx serve .
+# or:
+python3 -m http.server 5173
+```
+
+Then open `http://localhost:5173`. ES modules require a real HTTP server —
+opening `index.html` via `file://` will not work in most browsers.
+
+## Deployment
+
+This is a static site: any static host works. Three ready-made options:
+
+### Vercel
+
+`vercel.json` is already configured (security headers only — no build step
+needed). From the project root:
+
+```bash
+npx vercel
+```
+
+Or connect the repository in the Vercel dashboard with **Framework Preset:
+Other** and leave the build command empty.
+
+### Cloudflare Pages
+
+1. Connect the repository in the Cloudflare dashboard.
+2. Build command: *(leave empty)*
+3. Build output directory: `/`
+4. Deploy.
+
+### GitHub Pages
+
+1. Push this repository to GitHub.
+2. In **Settings → Pages**, set **Source** to the branch containing this
+   project and the root (`/`) folder.
+3. Save — GitHub will publish the static files as-is.
+
+## Browser support
+
+Targets current Chrome, Firefox, Safari and Edge on desktop, Android and
+iOS. Requires `createImageBitmap`, the Canvas API, and (for background
+processing) `Worker` + `OffscreenCanvas`; browsers without
+`OffscreenCanvas` automatically fall back to synchronous main-thread
+conversion instead of failing.
+
+## Known limitations
+
+- **Clothing-type detection is zone-based, not pixel-based** — see "Mapping
+  provenance" above for why that's a property of the source format, not a
+  shortcut taken by this app.
+- **The region mapping is community-verified, not officially published** by
+  Polytoria. See the in-app "About the conversion mapping" panel and the
+  provenance section above.
+- Output format is PNG only for now. The output pipeline already threads an
+  `outputFormat` setting through the app so adding another lossless format
+  later is a small, contained change.
+
+## License
+
+MIT — see [`LICENSE`](./LICENSE). The region-mapping constants in
+`converter.js` were derived by cross-referencing the two community projects
+credited above and in the file's header comment.

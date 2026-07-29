@@ -1,28 +1,224 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Pollo Store - Fresh Produce</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-      body { font-family: 'Inter', sans-serif; }
-    </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "lucide-react": "https://esm.sh/lucide-react@^0.560.0",
-    "@google/genai": "https://esm.sh/@google/genai@^1.33.0",
-    "react-router-dom": "https://esm.sh/react-router-dom@^7.10.1"
-  }
-}
-</script>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="theme-color" content="#0b0e17" />
+  <title>Roblox → Polytoria Converter</title>
+  <meta name="description" content="Convert classic Roblox clothing templates into Polytoria templates instantly, 100% in your browser." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%91%95%3C/text%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
-  <body class="bg-gray-50 text-gray-900">
-    <div id="root"></div>
-  </body>
+<body data-theme="dark">
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <div class="bg-decor" aria-hidden="true"></div>
+
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">👕⇄🧩</span>
+      <div>
+        <h1>Roblox <span class="arrow">→</span> Polytoria Converter</h1>
+        <p class="subtitle">Convert classic Roblox clothing into Polytoria templates instantly.</p>
+      </div>
+    </div>
+    <button id="theme-toggle" class="icon-btn" type="button" aria-label="Toggle light and dark theme" title="Toggle theme (light/dark)">
+      <span id="theme-icon" aria-hidden="true">🌙</span>
+    </button>
+  </header>
+
+  <main id="main">
+    <!-- ============================== UPLOADS ============================== -->
+    <section class="uploads" aria-label="Upload templates">
+      <div class="dropzone" id="shirt-zone" tabindex="0" role="button"
+           aria-label="Upload Roblox shirt template PNG. Press Enter or Space to browse files.">
+        <input type="file" id="shirt-input" accept="image/png" hidden />
+        <div class="dz-icon" aria-hidden="true">👕</div>
+        <div class="dz-title">Shirt</div>
+        <p class="dz-hint">Drag &amp; drop a Roblox shirt template PNG here</p>
+        <button type="button" class="dz-browse" id="shirt-browse">Browse file</button>
+        <p class="dz-meta" id="shirt-meta" aria-live="polite"></p>
+        <p class="dz-error" id="shirt-error" role="alert"></p>
+      </div>
+
+      <div class="dropzone" id="pants-zone" tabindex="0" role="button"
+           aria-label="Upload Roblox pants template PNG. Press Enter or Space to browse files.">
+        <input type="file" id="pants-input" accept="image/png" hidden />
+        <div class="dz-icon" aria-hidden="true">👖</div>
+        <div class="dz-title">Pants</div>
+        <p class="dz-hint">Drag &amp; drop a Roblox pants template PNG here</p>
+        <button type="button" class="dz-browse" id="pants-browse">Browse file</button>
+        <p class="dz-meta" id="pants-meta" aria-live="polite"></p>
+        <p class="dz-error" id="pants-error" role="alert"></p>
+      </div>
+    </section>
+
+    <!-- ============================== TOOLBAR ============================== -->
+    <section class="toolbar" role="toolbar" aria-label="Conversion actions">
+      <button type="button" id="btn-upload" class="btn">
+        <span aria-hidden="true">📤</span> Upload
+      </button>
+      <button type="button" id="btn-convert" class="btn btn-primary" disabled>
+        <span aria-hidden="true">⚙️</span> Convert
+      </button>
+      <button type="button" id="btn-reset" class="btn" disabled>
+        <span aria-hidden="true">↺</span> Reset
+      </button>
+      <button type="button" id="btn-download" class="btn" disabled>
+        <span aria-hidden="true">⬇️</span> Download
+      </button>
+      <button type="button" id="btn-download-zip" class="btn" disabled>
+        <span aria-hidden="true">🗂️</span> Download ZIP
+      </button>
+
+      <div class="toolbar-spacer"></div>
+
+      <label class="field-inline" for="output-format">
+        Output format
+        <select id="output-format">
+          <option value="png" selected>PNG (lossless, recommended)</option>
+        </select>
+      </label>
+    </section>
+
+    <!-- ============================== STATUS / PROGRESS ============================== -->
+    <section class="progress-section" aria-label="Conversion progress">
+      <p id="status-message" class="status-message" aria-live="polite">Upload a shirt and/or pants template to begin.</p>
+      <div class="progress-track" id="progress-track" hidden>
+        <div class="progress-fill" id="progress-fill" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+      </div>
+    </section>
+
+    <!-- ============================== RESULTS ============================== -->
+    <section id="results" class="results" aria-label="Converted templates" hidden>
+      <article class="result-card" id="result-shirt" hidden>
+        <header class="result-head">
+          <h2>Shirt <span class="badge">Polytoria template</span></h2>
+          <p class="result-meta" id="shirt-result-meta"></p>
+        </header>
+
+        <div class="compare" id="compare-shirt">
+          <div class="compare-checker" aria-hidden="true"></div>
+          <img class="compare-img compare-before" id="shirt-before-img" alt="Original Roblox shirt template" />
+          <div class="compare-after-wrap" id="shirt-after-wrap">
+            <img class="compare-img compare-after" id="shirt-after-img" alt="Converted Polytoria shirt template" />
+          </div>
+          <div class="compare-handle" id="shirt-handle" tabindex="0" role="slider"
+               aria-label="Before / after comparison slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+            <span class="compare-handle-grip">↔</span>
+          </div>
+          <span class="compare-tag compare-tag-before">Original</span>
+          <span class="compare-tag compare-tag-after">Polytoria</span>
+        </div>
+
+        <div class="result-controls">
+          <label class="field-inline" for="shirt-zoom">
+            Zoom
+            <input type="range" id="shirt-zoom" min="50" max="400" value="100" step="10" aria-label="Zoom shirt preview" />
+            <span id="shirt-zoom-value">100%</span>
+          </label>
+          <button type="button" class="btn btn-primary btn-download-single" id="shirt-download" data-kind="shirt">
+            Download Polytoria Template
+          </button>
+        </div>
+      </article>
+
+      <article class="result-card" id="result-pants" hidden>
+        <header class="result-head">
+          <h2>Pants <span class="badge">Polytoria template</span></h2>
+          <p class="result-meta" id="pants-result-meta"></p>
+        </header>
+
+        <div class="compare" id="compare-pants">
+          <div class="compare-checker" aria-hidden="true"></div>
+          <img class="compare-img compare-before" id="pants-before-img" alt="Original Roblox pants template" />
+          <div class="compare-after-wrap" id="pants-after-wrap">
+            <img class="compare-img compare-after" id="pants-after-img" alt="Converted Polytoria pants template" />
+          </div>
+          <div class="compare-handle" id="pants-handle" tabindex="0" role="slider"
+               aria-label="Before / after comparison slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+            <span class="compare-handle-grip">↔</span>
+          </div>
+          <span class="compare-tag compare-tag-before">Original</span>
+          <span class="compare-tag compare-tag-after">Polytoria</span>
+        </div>
+
+        <div class="result-controls">
+          <label class="field-inline" for="pants-zoom">
+            Zoom
+            <input type="range" id="pants-zoom" min="50" max="400" value="100" step="10" aria-label="Zoom pants preview" />
+            <span id="pants-zoom-value">100%</span>
+          </label>
+          <button type="button" class="btn btn-primary btn-download-single" id="pants-download" data-kind="pants">
+            Download Polytoria Template
+          </button>
+        </div>
+      </article>
+    </section>
+
+    <!-- ============================== HISTORY ============================== -->
+    <section class="history-panel" aria-label="Conversion history">
+      <div class="history-head">
+        <h2>History</h2>
+        <div class="history-actions">
+          <button type="button" id="btn-undo" class="icon-btn" disabled aria-label="Undo (Ctrl+Z)" title="Undo (Ctrl+Z)">↶</button>
+          <button type="button" id="btn-redo" class="icon-btn" disabled aria-label="Redo (Ctrl+Y)" title="Redo (Ctrl+Y)">↷</button>
+        </div>
+      </div>
+      <ul id="history-list" class="history-list">
+        <li class="history-empty" id="history-empty">No conversions yet this session.</li>
+      </ul>
+    </section>
+
+    <!-- ============================== SETTINGS ============================== -->
+    <section class="settings-panel" aria-label="Settings">
+      <div class="settings-group">
+        <span class="settings-label">Scaling quality</span>
+        <div class="radio-row" role="radiogroup" aria-label="Scaling quality">
+          <label><input type="radio" name="smoothing" value="smooth" checked /> Smooth (best for HD upscale)</label>
+          <label><input type="radio" name="smoothing" value="sharp" /> Sharp (pixel-perfect edges)</label>
+        </div>
+      </div>
+      <div class="settings-group">
+        <label class="checkbox-row" for="auto-download">
+          <input type="checkbox" id="auto-download" />
+          Auto-download after each conversion
+        </label>
+      </div>
+
+      <details class="mapping-info">
+        <summary>About the conversion mapping</summary>
+        <p id="mapping-summary"></p>
+        <ul id="mapping-sources"></ul>
+      </details>
+
+      <details class="shortcuts-info">
+        <summary>Keyboard shortcuts</summary>
+        <ul>
+          <li><kbd>Ctrl</kbd>+<kbd>O</kbd> — Open / browse a template</li>
+          <li><kbd>Ctrl</kbd>+<kbd>S</kbd> — Download current result</li>
+          <li><kbd>Ctrl</kbd>+<kbd>R</kbd> — Reset the app</li>
+          <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> — Undo (previous history entry)</li>
+          <li><kbd>Ctrl</kbd>+<kbd>Y</kbd> — Redo (next history entry)</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>100% client-side — your templates never leave your device. No backend, no uploads, no tracking.</p>
+  </footer>
+
+  <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+  <div id="success-overlay" class="success-overlay" hidden aria-hidden="true">
+    <div class="success-badge">
+      <span class="success-check">✓</span>
+      <span>Conversion completed successfully.</span>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
 </html>

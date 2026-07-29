@@ -341,11 +341,6 @@ export function initUI(handlers) {
       }
     },
 
-    hideAllResults() {
-      this.hideResult('shirt');
-      this.hideResult('pants');
-    },
-
     renderHistory(entries, activeIndex) {
       refs.historyList.querySelectorAll('.history-item').forEach((el) => el.remove());
       refs.historyEmpty.hidden = entries.length > 0;
@@ -399,15 +394,6 @@ export function initUI(handlers) {
         li.appendChild(a);
         refs.mappingSources.appendChild(li);
       }
-    },
-
-    getSettings() {
-      const smoothingRadio = refs.smoothingRadios.find((r) => r.checked);
-      return {
-        smoothing: smoothingRadio ? smoothingRadio.value === 'smooth' : true,
-        autoDownload: refs.autoDownload.checked,
-        outputFormat: refs.outputFormat.value,
-      };
     },
   };
 }

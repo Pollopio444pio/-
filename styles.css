@@ -407,6 +407,17 @@ select {
 }
 .result-meta { margin: 0; font-size: 0.82rem; color: var(--text-dim); font-family: var(--font-mono); }
 
+.result-hint {
+  margin: var(--space-2) 0 0;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+}
+.result-hint a { color: var(--accent); font-weight: 600; }
+
 .compare {
   position: relative;
   margin-top: var(--space-4);

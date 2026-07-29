@@ -232,6 +232,17 @@ export function initUI(handlers) {
   refs.btnUndo.addEventListener('click', () => handlers.onUndo());
   refs.btnRedo.addEventListener('click', () => handlers.onRedo());
 
+  // -- "why?" links in result hints jump to the detailed explanation ------
+  document.querySelectorAll('.mapping-info-link').forEach((link) => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const details = document.querySelector('.mapping-info');
+      if (!details) return;
+      details.open = true;
+      details.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
+
   // -- Compare sliders + zoom ----------------------------------------------
   for (const kind of ['shirt', 'pants']) {
     setupCompareHandle(refs, kind);

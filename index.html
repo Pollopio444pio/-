@@ -98,6 +98,8 @@
           <p class="result-meta" id="shirt-result-meta"></p>
         </header>
 
+        <p class="result-hint">Each panel lands in the correct spot. Artwork painted <em>across</em> panel edges (hoods, wraparound prints) may look shifted at the seam — <a href="#" class="mapping-info-link">why?</a></p>
+
         <div class="compare" id="compare-shirt">
           <div class="compare-checker" aria-hidden="true"></div>
           <img class="compare-img compare-before" id="shirt-before-img" alt="Original Roblox shirt template" />
@@ -129,6 +131,8 @@
           <h2>Pants <span class="badge">Polytoria template</span></h2>
           <p class="result-meta" id="pants-result-meta"></p>
         </header>
+
+        <p class="result-hint">Each panel lands in the correct spot. Artwork painted <em>across</em> panel edges (wraparound prints, fabric folds) may look shifted at the seam — <a href="#" class="mapping-info-link">why?</a></p>
 
         <div class="compare" id="compare-pants">
           <div class="compare-checker" aria-hidden="true"></div>
@@ -187,9 +191,20 @@
         </label>
       </div>
 
-      <details class="mapping-info">
-        <summary>About the conversion mapping</summary>
+      <details class="mapping-info" open>
+        <summary>About the conversion mapping (and why seams can shift)</summary>
         <p id="mapping-summary"></p>
+        <p>
+          <strong>Solid colors and designs painted separately per panel convert cleanly.</strong>
+          Artwork that's painted <em>continuously across panel edges</em> — a hood shape, a
+          print that wraps from the front onto the sleeves, fabric folds crossing a seam —
+          will look shifted or "broken" at those edges after conversion. This isn't a bug:
+          Roblox's classic template and Polytoria's template don't place matching panels at
+          the same relative spacing, so pixel-perfect continuity across a panel boundary
+          can't be preserved by <em>any</em> converter, including the reference tools this
+          mapping was verified against. Each individual panel still lands in the geometrically
+          correct spot — only art that spans two panels will show a seam.
+        </p>
         <ul id="mapping-sources"></ul>
       </details>
 

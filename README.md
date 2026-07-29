@@ -151,6 +151,18 @@ conversion instead of failing.
 - **The region mapping is community-verified, not officially published** by
   Polytoria. See the in-app "About the conversion mapping" panel and the
   provenance section above.
+- **Artwork painted continuously across panel edges will show a seam after
+  conversion.** Each panel (torso front, sleeve, etc.) is individually placed
+  at its geometrically correct spot in the Polytoria layout — verified by
+  converting a template with a distinct solid color painted into every named
+  panel and confirming each one lands where expected, with no overlap — but
+  Roblox's and Polytoria's layouts don't use the same relative spacing
+  between panels. A hood shape, a
+  wraparound print, or fabric folds that flow from one panel into the next
+  cannot stay visually continuous across that boundary in *any* converter,
+  including the reference tools this mapping is based on. Solid colors and
+  art painted independently per panel are unaffected. The app surfaces this
+  as an inline hint next to every result.
 - Output format is PNG only for now. The output pipeline already threads an
   `outputFormat` setting through the app so adding another lossless format
   later is a small, contained change.

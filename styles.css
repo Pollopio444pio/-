@@ -541,11 +541,21 @@ select {
   transition: transform var(--dur-fast) var(--ease);
 }
 
-.compare-after-wrap {
+/* Both wraps clip complementarily (never overlapping) so the "before" image
+   can never bleed through the "after" image's transparent regions or vice
+   versa -- only the checkerboard shows through transparency, never the
+   other photo. Default 50/50 split matches the handle's initial position. */
+.compare-before-wrap {
   position: absolute;
   inset: 0;
   overflow: hidden;
   clip-path: inset(0 50% 0 0);
+}
+.compare-after-wrap {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  clip-path: inset(0 0 0 50%);
 }
 
 .compare-handle {

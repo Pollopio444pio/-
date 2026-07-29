@@ -340,6 +340,7 @@ export function initUI(handlers) {
 
         const beforeImg = card.querySelector('.compare-before');
         const afterImg = card.querySelector('.compare-after');
+        const beforeWrap = card.querySelector('.compare-before-wrap');
         const afterWrap = card.querySelector('.compare-after-wrap');
         const handle = card.querySelector('.compare-handle');
         const zoomInput = card.querySelector('.result-zoom');
@@ -350,8 +351,8 @@ export function initUI(handlers) {
         beforeImg.alt = `Original ${item.title}`;
         afterImg.alt = `Converted ${item.title}`;
 
-        setComparePosition(afterWrap, handle, 50);
-        setupCompareHandle(card.querySelector('.compare'), handle, afterWrap);
+        setComparePosition(beforeWrap, afterWrap, handle, 50);
+        setupCompareHandle(card.querySelector('.compare'), handle, beforeWrap, afterWrap);
         zoomInput.addEventListener('input', () => {
           const value = Number(zoomInput.value);
           zoomValue.textContent = `${value}%`;
@@ -428,20 +429,27 @@ export function initUI(handlers) {
 // Before/after compare slider (scoped to one card's elements)
 // ---------------------------------------------------------------------
 
-function setComparePosition(afterWrap, handle, percent) {
+/**
+ * Clips the "before" wrap to [0, percent] and the "after" wrap to
+ * [percent, 100] -- always complementary, never overlapping, so neither
+ * image's transparent regions can ever reveal the other image underneath.
+ * Only the checkerboard layer (below both) shows through transparency.
+ */
+function setComparePosition(beforeWrap, afterWrap, handle, percent) {
   const clamped = Math.max(0, Math.min(100, percent));
-  afterWrap.style.clipPath = `inset(0 ${100 - clamped}% 0 0)`;
+  beforeWrap.style.clipPath = `inset(0 ${100 - clamped}% 0 0)`;
+  afterWrap.style.clipPath = `inset(0 0 0 ${clamped}%)`;
   handle.style.left = `${clamped}%`;
   handle.setAttribute('aria-valuenow', String(Math.round(clamped)));
 }
 
-function setupCompareHandle(box, handle, afterWrap) {
+function setupCompareHandle(box, handle, beforeWrap, afterWrap) {
   const percentFromClientX = (clientX) => {
     const rect = box.getBoundingClientRect();
     return ((clientX - rect.left) / rect.width) * 100;
   };
 
-  const onPointerMove = (e) => setComparePosition(afterWrap, handle, percentFromClientX(e.clientX));
+  const onPointerMove = (e) => setComparePosition(beforeWrap, afterWrap, handle, percentFromClientX(e.clientX));
 
   handle.addEventListener('pointerdown', (e) => {
     handle.setPointerCapture(e.pointerId);
@@ -457,17 +465,17 @@ function setupCompareHandle(box, handle, afterWrap) {
 
   box.addEventListener('click', (e) => {
     if (e.target === handle) return;
-    setComparePosition(afterWrap, handle, percentFromClientX(e.clientX));
+    setComparePosition(beforeWrap, afterWrap, handle, percentFromClientX(e.clientX));
   });
 
   handle.addEventListener('keydown', (e) => {
     const current = Number(handle.getAttribute('aria-valuenow')) || 50;
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      setComparePosition(afterWrap, handle, current - 5);
+      setComparePosition(beforeWrap, afterWrap, handle, current - 5);
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
-      setComparePosition(afterWrap, handle, current + 5);
+      setComparePosition(beforeWrap, afterWrap, handle, current + 5);
     }
   });
 }

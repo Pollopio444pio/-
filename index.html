@@ -32,25 +32,25 @@
     <!-- ============================== UPLOADS ============================== -->
     <section class="uploads" aria-label="Upload templates">
       <div class="dropzone" id="shirt-zone" tabindex="0" role="button"
-           aria-label="Upload Roblox shirt template PNG. Press Enter or Space to browse files.">
-        <input type="file" id="shirt-input" accept="image/png" hidden />
+           aria-label="Upload up to 20 Roblox shirt template PNGs. Press Enter or Space to browse files.">
+        <input type="file" id="shirt-input" accept="image/png" multiple hidden />
         <div class="dz-icon" aria-hidden="true">👕</div>
-        <div class="dz-title">Shirt</div>
-        <p class="dz-hint">Drag &amp; drop a Roblox shirt template PNG here</p>
-        <button type="button" class="dz-browse" id="shirt-browse">Browse file</button>
-        <p class="dz-meta" id="shirt-meta" aria-live="polite"></p>
+        <div class="dz-title">Shirts <span class="dz-count" id="shirt-count">0/20</span></div>
+        <p class="dz-hint">Drag &amp; drop up to 20 Roblox shirt template PNGs here</p>
+        <button type="button" class="dz-browse" id="shirt-browse">Browse files</button>
         <p class="dz-error" id="shirt-error" role="alert"></p>
+        <ul class="dz-queue" id="shirt-queue" aria-label="Queued shirt files"></ul>
       </div>
 
       <div class="dropzone" id="pants-zone" tabindex="0" role="button"
-           aria-label="Upload Roblox pants template PNG. Press Enter or Space to browse files.">
-        <input type="file" id="pants-input" accept="image/png" hidden />
+           aria-label="Upload up to 20 Roblox pants template PNGs. Press Enter or Space to browse files.">
+        <input type="file" id="pants-input" accept="image/png" multiple hidden />
         <div class="dz-icon" aria-hidden="true">👖</div>
-        <div class="dz-title">Pants</div>
-        <p class="dz-hint">Drag &amp; drop a Roblox pants template PNG here</p>
-        <button type="button" class="dz-browse" id="pants-browse">Browse file</button>
-        <p class="dz-meta" id="pants-meta" aria-live="polite"></p>
+        <div class="dz-title">Pants <span class="dz-count" id="pants-count">0/20</span></div>
+        <p class="dz-hint">Drag &amp; drop up to 20 Roblox pants template PNGs here</p>
+        <button type="button" class="dz-browse" id="pants-browse">Browse files</button>
         <p class="dz-error" id="pants-error" role="alert"></p>
+        <ul class="dz-queue" id="pants-queue" aria-label="Queued pants files"></ul>
       </div>
     </section>
 
@@ -65,10 +65,10 @@
       <button type="button" id="btn-reset" class="btn" disabled>
         <span aria-hidden="true">↺</span> Reset
       </button>
-      <button type="button" id="btn-download" class="btn" disabled>
-        <span aria-hidden="true">⬇️</span> Download
+      <button type="button" id="btn-download" class="btn" disabled title="Downloads each file individually">
+        <span aria-hidden="true">⬇️</span> Download all
       </button>
-      <button type="button" id="btn-download-zip" class="btn" disabled>
+      <button type="button" id="btn-download-zip" class="btn" disabled title="Recommended for multiple files">
         <span aria-hidden="true">🗂️</span> Download ZIP
       </button>
 
@@ -92,73 +92,14 @@
 
     <!-- ============================== RESULTS ============================== -->
     <section id="results" class="results" aria-label="Converted templates" hidden>
-      <article class="result-card" id="result-shirt" hidden>
-        <header class="result-head">
-          <h2>Shirt <span class="badge">Polytoria template</span></h2>
-          <p class="result-meta" id="shirt-result-meta"></p>
-        </header>
-
-        <p class="result-hint">Each panel lands in the correct spot. Artwork painted <em>across</em> panel edges (hoods, wraparound prints) may look shifted at the seam — <a href="#" class="mapping-info-link">why?</a></p>
-
-        <div class="compare" id="compare-shirt">
-          <div class="compare-checker" aria-hidden="true"></div>
-          <img class="compare-img compare-before" id="shirt-before-img" alt="Original Roblox shirt template" />
-          <div class="compare-after-wrap" id="shirt-after-wrap">
-            <img class="compare-img compare-after" id="shirt-after-img" alt="Converted Polytoria shirt template" />
-          </div>
-          <div class="compare-handle" id="shirt-handle" tabindex="0" role="slider"
-               aria-label="Before / after comparison slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
-            <span class="compare-handle-grip">↔</span>
-          </div>
-          <span class="compare-tag compare-tag-before">Original</span>
-          <span class="compare-tag compare-tag-after">Polytoria</span>
-        </div>
-
-        <div class="result-controls">
-          <label class="field-inline" for="shirt-zoom">
-            Zoom
-            <input type="range" id="shirt-zoom" min="50" max="400" value="100" step="10" aria-label="Zoom shirt preview" />
-            <span id="shirt-zoom-value">100%</span>
-          </label>
-          <button type="button" class="btn btn-primary btn-download-single" id="shirt-download" data-kind="shirt">
-            Download Polytoria Template
-          </button>
-        </div>
-      </article>
-
-      <article class="result-card" id="result-pants" hidden>
-        <header class="result-head">
-          <h2>Pants <span class="badge">Polytoria template</span></h2>
-          <p class="result-meta" id="pants-result-meta"></p>
-        </header>
-
-        <p class="result-hint">Each panel lands in the correct spot. Artwork painted <em>across</em> panel edges (wraparound prints, fabric folds) may look shifted at the seam — <a href="#" class="mapping-info-link">why?</a></p>
-
-        <div class="compare" id="compare-pants">
-          <div class="compare-checker" aria-hidden="true"></div>
-          <img class="compare-img compare-before" id="pants-before-img" alt="Original Roblox pants template" />
-          <div class="compare-after-wrap" id="pants-after-wrap">
-            <img class="compare-img compare-after" id="pants-after-img" alt="Converted Polytoria pants template" />
-          </div>
-          <div class="compare-handle" id="pants-handle" tabindex="0" role="slider"
-               aria-label="Before / after comparison slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
-            <span class="compare-handle-grip">↔</span>
-          </div>
-          <span class="compare-tag compare-tag-before">Original</span>
-          <span class="compare-tag compare-tag-after">Polytoria</span>
-        </div>
-
-        <div class="result-controls">
-          <label class="field-inline" for="pants-zoom">
-            Zoom
-            <input type="range" id="pants-zoom" min="50" max="400" value="100" step="10" aria-label="Zoom pants preview" />
-            <span id="pants-zoom-value">100%</span>
-          </label>
-          <button type="button" class="btn btn-primary btn-download-single" id="pants-download" data-kind="pants">
-            Download Polytoria Template
-          </button>
-        </div>
-      </article>
+      <div class="result-group" id="result-group-shirt" hidden>
+        <h2>Shirts <span class="badge" id="shirt-result-count">0</span></h2>
+        <div class="result-grid" id="shirt-results-grid"></div>
+      </div>
+      <div class="result-group" id="result-group-pants" hidden>
+        <h2>Pants <span class="badge" id="pants-result-count">0</span></h2>
+        <div class="result-grid" id="pants-results-grid"></div>
+      </div>
     </section>
 
     <!-- ============================== HISTORY ============================== -->
@@ -233,6 +174,52 @@
       <span>Conversion completed successfully.</span>
     </div>
   </div>
+
+  <!-- ============================== TEMPLATES ============================== -->
+  <template id="queue-item-template">
+    <li class="queue-item">
+      <span class="queue-item-name"></span>
+      <span class="queue-item-meta"></span>
+      <button type="button" class="queue-item-remove" aria-label="Remove file from queue">✕</button>
+    </li>
+  </template>
+
+  <template id="result-card-template">
+    <article class="result-card">
+      <header class="result-head">
+        <h3 class="result-title"></h3>
+        <p class="result-meta"></p>
+      </header>
+
+      <p class="result-hint">Each panel lands in the correct spot. Artwork painted <em>across</em> panel edges (hoods, wraparound prints) may look shifted at the seam — <a href="#" class="mapping-info-link">why?</a></p>
+
+      <div class="compare">
+        <div class="compare-checker" aria-hidden="true"></div>
+        <img class="compare-img compare-before" alt="Original Roblox template" />
+        <div class="compare-after-wrap">
+          <img class="compare-img compare-after" alt="Converted Polytoria template" />
+        </div>
+        <div class="compare-handle" tabindex="0" role="slider"
+             aria-label="Before / after comparison slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+          <span class="compare-handle-grip">↔</span>
+        </div>
+        <span class="compare-tag compare-tag-before">Original</span>
+        <span class="compare-tag compare-tag-after">Polytoria</span>
+      </div>
+
+      <div class="result-controls">
+        <label class="field-inline">
+          Zoom
+          <input type="range" class="result-zoom" min="50" max="400" value="100" step="10" aria-label="Zoom preview" />
+          <span class="result-zoom-value">100%</span>
+        </label>
+        <div class="result-buttons">
+          <button type="button" class="btn btn-primary btn-download-single">Download</button>
+          <button type="button" class="btn btn-ghost btn-remove-result" aria-label="Remove this result">Remove</button>
+        </div>
+      </div>
+    </article>
+  </template>
 
   <script type="module" src="app.js"></script>
 </body>

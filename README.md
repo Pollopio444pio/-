@@ -64,17 +64,22 @@ intentional, not a bug, and matches both reference converters.
 
 ## Features
 
-- Drag-and-drop (or click-to-browse) upload for Shirt and Pants, PNG only.
+- Drag-and-drop (or click-to-browse, multi-select) **batch upload — up to 20
+  shirts and 20 pants at once**, each queued independently with its own
+  validation status and a remove button.
 - Fully automatic conversion — no manual pixel editing at any point.
 - Before/after comparison slider with a checkerboard background (so
-  transparency is easy to inspect) and independent zoom per result.
-- Per-garment **Download Polytoria Template** button, a toolbar **Download**
-  (all current results) and **Download ZIP** (dependency-free ZIP writer,
-  `STORE` method so PNGs aren't needlessly re-compressed).
-- Automatic, spec-compliant file naming: `Polytoria_Template.png` for a
-  single result, `Polytoria_Template_1.png` / `_2.png` when both shirt and
-  pants are converted together.
-- Session conversion history with Undo/Redo.
+  transparency is easy to inspect) and independent zoom per result, one
+  card per converted file in a responsive grid.
+- Per-file **Download** button, a toolbar **Download all** (every current
+  result, individually) and **Download ZIP** (dependency-free ZIP writer,
+  `STORE` method so PNGs aren't needlessly re-compressed) — recommended for
+  batches.
+- Automatic file naming: `Polytoria_Template.png` when there's a single
+  result; `Polytoria_Shirt_1.png`, `Polytoria_Pants_1.png`, etc. (numbered
+  per garment type) for batches.
+- Session conversion history (up to 5 runs, since a run can hold up to 40
+  images) with Undo/Redo.
 - Light/dark theme, persisted across visits.
 - Keyboard shortcuts: `Ctrl/Cmd+O` open, `Ctrl/Cmd+S` download, `Ctrl/Cmd+R`
   reset, `Ctrl/Cmd+Z` / `Ctrl/Cmd+Y` undo/redo.

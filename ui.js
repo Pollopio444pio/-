@@ -7,6 +7,11 @@
  * passed into initUI(). Keeping this boundary means converter.js,
  * imageProcessor.js and worker.js stay entirely UI-free and testable in
  * isolation.
+ *
+ * Both the upload queues and the result cards are rendered from <template>
+ * elements cloned per item (see index.html), since a batch can hold up to
+ * MAX_FILES_PER_KIND items per garment type -- there's no longer a single
+ * fixed DOM node per kind to reach for by id.
  * ------------------------------------------------------------------------
  */
 
@@ -18,28 +23,13 @@ function collectRefs() {
   const byId = (id) => document.getElementById(id);
   return {
     themeToggle: byId('theme-toggle'),
-    themeIcon: byId('theme-icon'),
 
-    zones: {
-      shirt: byId('shirt-zone'),
-      pants: byId('pants-zone'),
-    },
-    inputs: {
-      shirt: byId('shirt-input'),
-      pants: byId('pants-input'),
-    },
-    browseButtons: {
-      shirt: byId('shirt-browse'),
-      pants: byId('pants-browse'),
-    },
-    meta: {
-      shirt: byId('shirt-meta'),
-      pants: byId('pants-meta'),
-    },
-    errors: {
-      shirt: byId('shirt-error'),
-      pants: byId('pants-error'),
-    },
+    zones: { shirt: byId('shirt-zone'), pants: byId('pants-zone') },
+    inputs: { shirt: byId('shirt-input'), pants: byId('pants-input') },
+    browseButtons: { shirt: byId('shirt-browse'), pants: byId('pants-browse') },
+    counts: { shirt: byId('shirt-count'), pants: byId('pants-count') },
+    errors: { shirt: byId('shirt-error'), pants: byId('pants-error') },
+    queues: { shirt: byId('shirt-queue'), pants: byId('pants-queue') },
 
     btnUpload: byId('btn-upload'),
     btnConvert: byId('btn-convert'),
@@ -53,46 +43,9 @@ function collectRefs() {
     progressFill: byId('progress-fill'),
 
     results: byId('results'),
-    resultCards: {
-      shirt: byId('result-shirt'),
-      pants: byId('result-pants'),
-    },
-    resultMeta: {
-      shirt: byId('shirt-result-meta'),
-      pants: byId('pants-result-meta'),
-    },
-    beforeImg: {
-      shirt: byId('shirt-before-img'),
-      pants: byId('pants-before-img'),
-    },
-    afterImg: {
-      shirt: byId('shirt-after-img'),
-      pants: byId('pants-after-img'),
-    },
-    afterWrap: {
-      shirt: byId('shirt-after-wrap'),
-      pants: byId('pants-after-wrap'),
-    },
-    compareBox: {
-      shirt: byId('compare-shirt'),
-      pants: byId('compare-pants'),
-    },
-    handle: {
-      shirt: byId('shirt-handle'),
-      pants: byId('pants-handle'),
-    },
-    zoomInput: {
-      shirt: byId('shirt-zoom'),
-      pants: byId('pants-zoom'),
-    },
-    zoomValue: {
-      shirt: byId('shirt-zoom-value'),
-      pants: byId('pants-zoom-value'),
-    },
-    downloadSingle: {
-      shirt: byId('shirt-download'),
-      pants: byId('pants-download'),
-    },
+    resultGroups: { shirt: byId('result-group-shirt'), pants: byId('result-group-pants') },
+    resultGrids: { shirt: byId('shirt-results-grid'), pants: byId('pants-results-grid') },
+    resultCounts: { shirt: byId('shirt-result-count'), pants: byId('pants-result-count') },
 
     historyList: byId('history-list'),
     historyEmpty: byId('history-empty'),
@@ -103,9 +56,13 @@ function collectRefs() {
     autoDownload: byId('auto-download'),
     mappingSummary: byId('mapping-summary'),
     mappingSources: byId('mapping-sources'),
+    mappingInfo: document.querySelector('.mapping-info'),
 
     toastContainer: byId('toast-container'),
     successOverlay: byId('success-overlay'),
+
+    queueItemTemplate: byId('queue-item-template'),
+    resultCardTemplate: byId('result-card-template'),
   };
 }
 
@@ -147,14 +104,14 @@ export function initUI(handlers) {
   initTheme();
   refs.themeToggle.addEventListener('click', toggleTheme);
 
-  // -- Drop zones -------------------------------------------------------
+  // -- Drop zones (multi-file) ------------------------------------------
   for (const kind of ['shirt', 'pants']) {
     const zone = refs.zones[kind];
     const input = refs.inputs[kind];
 
     const openPicker = () => {
       lastInteractedZone = kind;
-      input.value = ''; // allow re-selecting the same file
+      input.value = ''; // allow re-selecting the same file(s)
       input.click();
     };
 
@@ -162,7 +119,11 @@ export function initUI(handlers) {
       e.stopPropagation();
       openPicker();
     });
-    zone.addEventListener('click', openPicker);
+    zone.addEventListener('click', (e) => {
+      // Clicks on queue-item remove buttons bubble up to the zone; ignore those.
+      if (e.target.closest('.queue-item')) return;
+      openPicker();
+    });
     zone.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
@@ -172,13 +133,9 @@ export function initUI(handlers) {
     zone.addEventListener('focus', () => { lastInteractedZone = kind; });
 
     input.addEventListener('change', () => {
-      const file = input.files?.[0];
-      // Clear immediately (not just before the next open) so that any
-      // programmatic re-selection of the identical file still fires a
-      // future 'change' event -- browsers otherwise suppress it when an
-      // <input type=file>'s value would stay textually identical.
-      input.value = '';
-      if (file) handlers.onFileSelected(kind, file);
+      const files = Array.from(input.files || []);
+      input.value = ''; // let the identical file(s) be re-selected later
+      if (files.length) handlers.onFilesSelected(kind, files);
     });
 
     let dragDepth = 0;
@@ -197,8 +154,16 @@ export function initUI(handlers) {
       dragDepth = 0;
       zone.classList.remove('dz-active');
       lastInteractedZone = kind;
-      const file = e.dataTransfer?.files?.[0];
-      if (file) handlers.onFileSelected(kind, file);
+      const files = Array.from(e.dataTransfer?.files || []);
+      if (files.length) handlers.onFilesSelected(kind, files);
+    });
+
+    refs.queues[kind].addEventListener('click', (e) => {
+      const removeBtn = e.target.closest('.queue-item-remove');
+      if (!removeBtn) return;
+      e.stopPropagation();
+      const id = removeBtn.closest('.queue-item').dataset.id;
+      handlers.onRemoveQueueItem(kind, id);
     });
   }
 
@@ -212,10 +177,6 @@ export function initUI(handlers) {
   refs.btnReset.addEventListener('click', () => handlers.onReset());
   refs.btnDownload.addEventListener('click', () => handlers.onDownloadAll());
   refs.btnDownloadZip.addEventListener('click', () => handlers.onDownloadZip());
-
-  for (const kind of ['shirt', 'pants']) {
-    refs.downloadSingle[kind].addEventListener('click', () => handlers.onDownloadSingle(kind));
-  }
 
   refs.outputFormat.addEventListener('change', () => {
     handlers.onSettingsChange({ outputFormat: refs.outputFormat.value });
@@ -232,21 +193,29 @@ export function initUI(handlers) {
   refs.btnUndo.addEventListener('click', () => handlers.onUndo());
   refs.btnRedo.addEventListener('click', () => handlers.onRedo());
 
-  // -- "why?" links in result hints jump to the detailed explanation ------
-  document.querySelectorAll('.mapping-info-link').forEach((link) => {
-    link.addEventListener('click', (e) => {
-      e.preventDefault();
-      const details = document.querySelector('.mapping-info');
-      if (!details) return;
-      details.open = true;
-      details.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-  });
-
-  // -- Compare sliders + zoom ----------------------------------------------
+  // -- Result grids: delegated events for download/remove/"why?" link -----
+  // (Cards are cloned dynamically, so listeners live on the stable grid
+  // container instead of on each card.)
   for (const kind of ['shirt', 'pants']) {
-    setupCompareHandle(refs, kind);
-    setupZoom(refs, kind);
+    refs.resultGrids[kind].addEventListener('click', (e) => {
+      const link = e.target.closest('.mapping-info-link');
+      if (link) {
+        e.preventDefault();
+        if (refs.mappingInfo) {
+          refs.mappingInfo.open = true;
+          refs.mappingInfo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return;
+      }
+      const card = e.target.closest('.result-card');
+      if (!card) return;
+      const id = card.dataset.id;
+      if (e.target.closest('.btn-download-single')) {
+        handlers.onDownloadSingle(kind, id);
+      } else if (e.target.closest('.btn-remove-result')) {
+        handlers.onRemoveResult(kind, id);
+      }
+    });
   }
 
   // -- Global keyboard shortcuts --------------------------------------------
@@ -311,8 +280,8 @@ export function initUI(handlers) {
       if (label) refs.progressFill.setAttribute('aria-valuetext', label);
     },
 
-    setZoneMeta(kind, text) {
-      refs.meta[kind].textContent = text || '';
+    setQueueCount(kind, count, max) {
+      refs.counts[kind].textContent = `${count}/${max}`;
     },
 
     setZoneError(kind, message) {
@@ -324,6 +293,23 @@ export function initUI(handlers) {
       refs.zones[kind].classList.toggle('dz-loaded', loaded);
     },
 
+    /**
+     * @param {'shirt'|'pants'} kind
+     * @param {Array<{id:string, name:string, meta:string, error?:string}>} items
+     */
+    renderQueue(kind, items) {
+      const list = refs.queues[kind];
+      list.innerHTML = '';
+      for (const item of items) {
+        const node = refs.queueItemTemplate.content.firstElementChild.cloneNode(true);
+        node.dataset.id = item.id;
+        node.querySelector('.queue-item-name').textContent = item.name;
+        node.querySelector('.queue-item-meta').textContent = item.error || item.meta;
+        node.classList.toggle('queue-item-error', Boolean(item.error));
+        list.appendChild(node);
+      }
+    },
+
     setButtonsEnabled({ convert, reset, download, downloadZip }) {
       refs.btnConvert.disabled = !convert;
       refs.btnReset.disabled = !reset;
@@ -331,24 +317,53 @@ export function initUI(handlers) {
       refs.btnDownloadZip.disabled = !downloadZip;
     },
 
-    renderResult(kind, { beforeURL, afterURL, outputWidth, outputHeight, originalWidth, originalHeight }) {
-      refs.results.hidden = false;
-      refs.resultCards[kind].hidden = false;
-      refs.beforeImg[kind].src = beforeURL;
-      refs.afterImg[kind].src = afterURL;
-      refs.resultMeta[kind].textContent =
-        `${originalWidth}×${originalHeight} Roblox template → ${outputWidth}×${outputHeight} Polytoria template`;
-      // Reset the compare slider and zoom back to a sane default per result.
-      setComparePosition(refs, kind, 50);
-      refs.zoomInput[kind].value = '100';
-      refs.zoomValue[kind].textContent = '100%';
-      applyZoom(refs, kind, 100);
-    },
+    /**
+     * Fully re-renders the result grid for one garment kind.
+     * @param {'shirt'|'pants'} kind
+     * @param {Array<{id:string, title:string, beforeURL:string, afterURL:string, outputWidth:number, outputHeight:number, originalWidth:number, originalHeight:number}>} items
+     */
+    renderResults(kind, items) {
+      const grid = refs.resultGrids[kind];
+      grid.innerHTML = '';
+      refs.resultCounts[kind].textContent = String(items.length);
 
-    hideResult(kind) {
-      refs.resultCards[kind].hidden = true;
-      if (refs.resultCards.shirt.hidden && refs.resultCards.pants.hidden) {
-        refs.results.hidden = true;
+      const groupVisible = items.length > 0;
+      refs.resultGroups[kind].hidden = !groupVisible;
+      refs.results.hidden = !(items.length > 0 || otherKindHasResults(kind));
+
+      for (const item of items) {
+        const card = refs.resultCardTemplate.content.firstElementChild.cloneNode(true);
+        card.dataset.id = item.id;
+        card.querySelector('.result-title').textContent = item.title;
+        card.querySelector('.result-meta').textContent =
+          `${item.originalWidth}×${item.originalHeight} Roblox → ${item.outputWidth}×${item.outputHeight} Polytoria`;
+
+        const beforeImg = card.querySelector('.compare-before');
+        const afterImg = card.querySelector('.compare-after');
+        const afterWrap = card.querySelector('.compare-after-wrap');
+        const handle = card.querySelector('.compare-handle');
+        const zoomInput = card.querySelector('.result-zoom');
+        const zoomValue = card.querySelector('.result-zoom-value');
+
+        beforeImg.src = item.beforeURL;
+        afterImg.src = item.afterURL;
+        beforeImg.alt = `Original ${item.title}`;
+        afterImg.alt = `Converted ${item.title}`;
+
+        setComparePosition(afterWrap, handle, 50);
+        setupCompareHandle(card.querySelector('.compare'), handle, afterWrap);
+        zoomInput.addEventListener('input', () => {
+          const value = Number(zoomInput.value);
+          zoomValue.textContent = `${value}%`;
+          applyZoom(beforeImg, afterImg, value);
+        });
+
+        grid.appendChild(card);
+      }
+
+      function otherKindHasResults(currentKind) {
+        const other = currentKind === 'shirt' ? 'pants' : 'shirt';
+        return refs.resultGrids[other].children.length > 0;
       }
     },
 
@@ -362,9 +377,9 @@ export function initUI(handlers) {
         li.setAttribute('role', 'button');
         li.tabIndex = 0;
 
-        const kinds = entry.kinds.join(' + ');
+        const label = `${entry.shirtCount} shirt${entry.shirtCount === 1 ? '' : 's'} + ${entry.pantsCount} pant${entry.pantsCount === 1 ? '' : 's'}`;
         const time = new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        li.innerHTML = `<span class="history-kind">${kinds}</span><span class="history-time">${time}</span>`;
+        li.innerHTML = `<span class="history-kind">${label}</span><span class="history-time">${time}</span>`;
 
         const select = () => handlers.onHistorySelect(index);
         li.addEventListener('click', select);
@@ -410,26 +425,23 @@ export function initUI(handlers) {
 }
 
 // ---------------------------------------------------------------------
-// Before/after compare slider
+// Before/after compare slider (scoped to one card's elements)
 // ---------------------------------------------------------------------
 
-function setComparePosition(refs, kind, percent) {
+function setComparePosition(afterWrap, handle, percent) {
   const clamped = Math.max(0, Math.min(100, percent));
-  refs.afterWrap[kind].style.clipPath = `inset(0 ${100 - clamped}% 0 0)`;
-  refs.handle[kind].style.left = `${clamped}%`;
-  refs.handle[kind].setAttribute('aria-valuenow', String(Math.round(clamped)));
+  afterWrap.style.clipPath = `inset(0 ${100 - clamped}% 0 0)`;
+  handle.style.left = `${clamped}%`;
+  handle.setAttribute('aria-valuenow', String(Math.round(clamped)));
 }
 
-function setupCompareHandle(refs, kind) {
-  const box = refs.compareBox[kind];
-  const handle = refs.handle[kind];
-
+function setupCompareHandle(box, handle, afterWrap) {
   const percentFromClientX = (clientX) => {
     const rect = box.getBoundingClientRect();
     return ((clientX - rect.left) / rect.width) * 100;
   };
 
-  const onPointerMove = (e) => setComparePosition(refs, kind, percentFromClientX(e.clientX));
+  const onPointerMove = (e) => setComparePosition(afterWrap, handle, percentFromClientX(e.clientX));
 
   handle.addEventListener('pointerdown', (e) => {
     handle.setPointerCapture(e.pointerId);
@@ -445,35 +457,27 @@ function setupCompareHandle(refs, kind) {
 
   box.addEventListener('click', (e) => {
     if (e.target === handle) return;
-    setComparePosition(refs, kind, percentFromClientX(e.clientX));
+    setComparePosition(afterWrap, handle, percentFromClientX(e.clientX));
   });
 
   handle.addEventListener('keydown', (e) => {
     const current = Number(handle.getAttribute('aria-valuenow')) || 50;
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      setComparePosition(refs, kind, current - 5);
+      setComparePosition(afterWrap, handle, current - 5);
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
-      setComparePosition(refs, kind, current + 5);
+      setComparePosition(afterWrap, handle, current + 5);
     }
   });
 }
 
 // ---------------------------------------------------------------------
-// Zoom
+// Zoom (scoped to one card's elements)
 // ---------------------------------------------------------------------
 
-function applyZoom(refs, kind, percent) {
+function applyZoom(beforeImg, afterImg, percent) {
   const scale = percent / 100;
-  refs.beforeImg[kind].style.transform = `scale(${scale})`;
-  refs.afterImg[kind].style.transform = `scale(${scale})`;
-}
-
-function setupZoom(refs, kind) {
-  refs.zoomInput[kind].addEventListener('input', () => {
-    const value = Number(refs.zoomInput[kind].value);
-    refs.zoomValue[kind].textContent = `${value}%`;
-    applyZoom(refs, kind, value);
-  });
+  beforeImg.style.transform = `scale(${scale})`;
+  afterImg.style.transform = `scale(${scale})`;
 }

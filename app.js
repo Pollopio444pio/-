@@ -5,6 +5,10 @@
  * pipeline (delegating heavy pixel work to worker.js when available, with
  * a same-thread fallback), and wires ui.js callbacks to that state.
  *
+ * Batching: each garment type (shirt/pants) has its own upload queue,
+ * capped at MAX_FILES_PER_KIND items. Convert processes every valid item
+ * across both queues in one run and replaces the results for that kind.
+ *
  * Everything here runs 100% client-side: no template ever leaves the
  * browser tab, and there is no backend to reach in the first place.
  * ------------------------------------------------------------------------
@@ -22,18 +26,20 @@ import {
 import { detectTemplateScale, convertFromSource, MAPPING_PROVENANCE } from './converter.js';
 import { createZip } from './zipWriter.js';
 
-const HISTORY_LIMIT = 20;
+const MAX_FILES_PER_KIND = 20;
+const HISTORY_LIMIT = 5; // a run can hold up to 40 images, so history stays small
 const KINDS = ['shirt', 'pants'];
 
-/** @typedef {{blob: Blob, url: string, outputWidth: number, outputHeight: number, originalWidth: number, originalHeight: number}} ConversionResult */
+/** @typedef {{id:string, file:File, width:number|null, height:number|null, valid:boolean, error:string|null, previewURL:string|null}} QueueItem */
+/** @typedef {{id:string, title:string, blob:Blob, url:string, beforeURL:string, sourceFile:File, outputWidth:number, outputHeight:number, originalWidth:number, originalHeight:number}} ResultItem */
+
+let nextQueueId = 1;
 
 const state = {
-  files: { shirt: null, pants: null },
-  dims: { shirt: null, pants: null }, // {width, height}
-  zoneValid: { shirt: false, pants: false },
-  previewURL: { shirt: null, pants: null },
-  /** @type {{shirt: ConversionResult|null, pants: ConversionResult|null}} */
-  results: { shirt: null, pants: null },
+  /** @type {{shirt: QueueItem[], pants: QueueItem[]}} */
+  queue: { shirt: [], pants: [] },
+  /** @type {{shirt: ResultItem[], pants: ResultItem[]}} */
+  results: { shirt: [], pants: [] },
   settings: loadSettings(),
   history: [], // see pushHistory() for shape
   historyIndex: -1,
@@ -91,8 +97,6 @@ if (workerUsable) {
       }
     };
     worker.onerror = () => {
-      // A malformed environment (e.g. a restrictive CSP) can throw here
-      // after construction succeeded; fall back rather than hard-fail.
       workerUsable = false;
     };
   } catch {
@@ -102,8 +106,7 @@ if (workerUsable) {
 
 /**
  * Converts one uploaded file, using the background worker when available
- * and transparently falling back to the main thread otherwise. Either
- * path reports progress the same way so the UI code doesn't need to care.
+ * and transparently falling back to the main thread otherwise.
  * @param {'shirt'|'pants'} kind
  * @param {File} file
  * @param {(done:number,total:number)=>void} onProgress
@@ -140,12 +143,14 @@ async function runConversion(kind, file, onProgress) {
 // ---------------------------------------------------------------------
 
 const ui = initUI({
-  onFileSelected: handleFileSelected,
+  onFilesSelected: handleFilesSelected,
+  onRemoveQueueItem: handleRemoveQueueItem,
   onConvert: handleConvert,
   onReset: handleReset,
   onDownloadAll: handleDownloadAll,
   onDownloadZip: handleDownloadZip,
   onDownloadSingle: handleDownloadSingle,
+  onRemoveResult: handleRemoveResult,
   onUndo: handleUndo,
   onRedo: handleRedo,
   onHistorySelect: (index) => restoreHistoryEntry(index),
@@ -157,12 +162,10 @@ const ui = initUI({
 
 applySettingsToControls();
 ui.setMappingInfo(MAPPING_PROVENANCE.summary, MAPPING_PROVENANCE.sources);
+for (const kind of KINDS) refreshQueueUI(kind);
 refreshButtons();
 
 function applySettingsToControls() {
-  // The radio/checkbox/select elements already default correctly from
-  // markup; only sync them if the stored settings differ (e.g. after a
-  // previous visit toggled "sharp" scaling).
   const smoothRadio = document.querySelector('input[name="smoothing"][value="smooth"]');
   const sharpRadio = document.querySelector('input[name="smoothing"][value="sharp"]');
   if (smoothRadio && sharpRadio) {
@@ -174,28 +177,66 @@ function applySettingsToControls() {
 }
 
 // ---------------------------------------------------------------------
-// File selection & validation
+// Queue management
 // ---------------------------------------------------------------------
 
-async function handleFileSelected(kind, file) {
+async function handleFilesSelected(kind, files) {
   if (state.converting) {
     ui.showToast('Please wait for the current conversion to finish.', 'info');
     return;
   }
 
-  const validation = await validateUpload(file);
+  const availableSlots = MAX_FILES_PER_KIND - state.queue[kind].length;
+  if (availableSlots <= 0) {
+    ui.showToast(`You already have ${MAX_FILES_PER_KIND} ${kind} files queued (the max). Remove some first.`, 'error');
+    return;
+  }
+
+  const toAdd = files.slice(0, availableSlots);
+  if (files.length > toAdd.length) {
+    ui.showToast(
+      `Only added ${toAdd.length} of ${files.length} files — the ${kind} queue is capped at ${MAX_FILES_PER_KIND}.`,
+      'info'
+    );
+  }
+
+  if (toAdd.length > 1) {
+    ui.setStatus(`Checking ${toAdd.length} files…`);
+  }
+
+  for (const file of toAdd) {
+    const item = {
+      id: String(nextQueueId++),
+      file,
+      width: null,
+      height: null,
+      valid: false,
+      error: null,
+      previewURL: null,
+    };
+    state.queue[kind].push(item);
+    await probeQueueItem(item);
+    refreshQueueUI(kind);
+    refreshButtons();
+  }
+
+  const validCount = state.queue[kind].filter((i) => i.valid).length;
+  ui.setStatus(`${state.queue[kind].length} ${kind} file(s) queued (${validCount} ready to convert).`);
+}
+
+/** Validates + decodes one queued file in place, filling in width/height/valid/error. */
+async function probeQueueItem(item) {
+  const validation = await validateUpload(item.file);
   if (!validation.valid) {
-    ui.setZoneError(kind, validation.reason);
-    ui.showToast(validation.reason, 'error');
+    item.error = validation.reason;
     return;
   }
 
   let bitmap;
   try {
-    bitmap = await loadImageBitmap(file);
+    bitmap = await loadImageBitmap(item.file);
   } catch (error) {
-    ui.setZoneError(kind, error.message);
-    ui.showToast(error.message, 'error');
+    item.error = error.message;
     return;
   }
 
@@ -204,27 +245,34 @@ async function handleFileSelected(kind, file) {
 
   const scale = detectTemplateScale(width, height);
   if (!scale.valid) {
-    ui.setZoneError(kind, scale.reason);
-    ui.showToast(scale.reason, 'error');
-    state.zoneValid[kind] = false;
-    ui.setZoneLoaded(kind, false);
-    refreshButtons();
+    item.error = scale.reason;
     return;
   }
 
-  revokeSafe(state.previewURL[kind]);
+  item.width = width;
+  item.height = height;
+  item.valid = true;
+  item.previewURL = URL.createObjectURL(item.file);
+}
 
-  state.files[kind] = file;
-  state.dims[kind] = { width, height };
-  state.zoneValid[kind] = true;
-  state.previewURL[kind] = URL.createObjectURL(file);
-  state.results[kind] = null;
+function refreshQueueUI(kind) {
+  const items = state.queue[kind].map((item) => ({
+    id: item.id,
+    name: item.file.name,
+    meta: item.valid ? `${item.width}×${item.height} · ${formatBytes(item.file.size)}` : formatBytes(item.file.size),
+    error: item.error,
+  }));
+  ui.renderQueue(kind, items);
+  ui.setQueueCount(kind, state.queue[kind].length, MAX_FILES_PER_KIND);
+  ui.setZoneLoaded(kind, state.queue[kind].length > 0);
+}
 
-  ui.setZoneError(kind, null);
-  ui.setZoneMeta(kind, `${width}×${height} · ${formatBytes(file.size)} · scale ${scale.outputScale.toFixed(2)}×`);
-  ui.setZoneLoaded(kind, true);
-  ui.hideResult(kind);
-  ui.setStatus(`${capitalize(kind)} template loaded. Ready to convert.`);
+function handleRemoveQueueItem(kind, id) {
+  const index = state.queue[kind].findIndex((item) => item.id === id);
+  if (index === -1) return;
+  const [removed] = state.queue[kind].splice(index, 1);
+  revokeSafe(removed.previewURL);
+  refreshQueueUI(kind);
   refreshButtons();
 }
 
@@ -233,72 +281,107 @@ async function handleFileSelected(kind, file) {
 // ---------------------------------------------------------------------
 
 async function handleConvert() {
-  const kindsToConvert = KINDS.filter((k) => state.files[k] && state.zoneValid[k]);
-  if (kindsToConvert.length === 0 || state.converting) return;
+  if (state.converting) return;
+
+  const jobs = [];
+  for (const kind of KINDS) {
+    for (const item of state.queue[kind]) {
+      if (item.valid) jobs.push({ kind, item });
+    }
+  }
+  if (jobs.length === 0) return;
 
   state.converting = true;
   refreshButtons();
   ui.setProgress(0, 'Starting…');
-  ui.setStatus('⚙ Converting…', 'info');
+  ui.setStatus(`⚙ Converting ${jobs.length} file${jobs.length === 1 ? '' : 's'}…`, 'info');
 
-  const succeeded = [];
-  const totalKinds = kindsToConvert.length;
+  const newResults = { shirt: [], pants: [] };
+  let completed = 0;
+  let failedCount = 0;
 
-  for (let i = 0; i < kindsToConvert.length; i += 1) {
-    const kind = kindsToConvert[i];
-    const baseProgress = (i / totalKinds) * 100;
-    const slice = 100 / totalKinds;
-
+  for (const { kind, item } of jobs) {
     try {
-      const { blob, outputSize } = await runConversion(kind, state.files[kind], (done, total) => {
-        const pct = baseProgress + (done / total) * slice;
-        ui.setProgress(pct, `Converting ${kind}… (${done}/${total} regions)`);
+      const { blob, outputSize } = await runConversion(kind, item.file, (done, total) => {
+        const overallPct = ((completed + done / total) / jobs.length) * 100;
+        ui.setProgress(overallPct, `Converting ${item.file.name}… (${completed + 1}/${jobs.length})`);
       });
 
-      revokeSafe(state.results[kind]?.url);
-      const url = URL.createObjectURL(blob);
-      const { width: originalWidth, height: originalHeight } = state.dims[kind];
-
-      state.results[kind] = {
+      newResults[kind].push({
+        id: item.id,
+        title: item.file.name,
         blob,
-        url,
+        url: URL.createObjectURL(blob),
+        beforeURL: URL.createObjectURL(item.file),
+        sourceFile: item.file,
         outputWidth: outputSize,
         outputHeight: outputSize,
-        originalWidth,
-        originalHeight,
-      };
-
-      ui.renderResult(kind, {
-        beforeURL: state.previewURL[kind],
-        afterURL: url,
-        outputWidth: outputSize,
-        outputHeight: outputSize,
-        originalWidth,
-        originalHeight,
+        originalWidth: item.width,
+        originalHeight: item.height,
       });
-
-      succeeded.push(kind);
     } catch (error) {
-      ui.setZoneError(kind, error.message);
-      ui.showToast(`${capitalize(kind)}: ${error.message}`, 'error');
+      failedCount += 1;
+      ui.showToast(`${item.file.name}: ${error.message}`, 'error');
+    }
+    completed += 1;
+  }
+
+  // The previous live results are always independently-owned clones (see
+  // pushHistory/restoreHistoryEntry), so revoking them here can never
+  // invalidate a URL a history entry still depends on.
+  for (const kind of KINDS) {
+    for (const result of state.results[kind]) {
+      revokeSafe(result.url);
+      revokeSafe(result.beforeURL);
     }
   }
+  state.results = newResults;
+  renderAllResults();
 
   state.converting = false;
   ui.setProgress(null);
 
-  if (succeeded.length > 0) {
-    pushHistory(succeeded);
-    ui.setStatus('✓ Conversion completed successfully.', 'success');
-    ui.showToast('Conversion completed successfully.', 'success');
+  const succeededCount = jobs.length - failedCount;
+  if (succeededCount > 0) {
+    pushHistory();
+    const message =
+      failedCount > 0
+        ? `✓ Converted ${succeededCount}/${jobs.length} files (${failedCount} failed — see messages above).`
+        : '✓ Conversion completed successfully.';
+    ui.setStatus(message, failedCount > 0 ? 'info' : 'success');
+    if (failedCount === 0) ui.showToast('Conversion completed successfully.', 'success');
     ui.showSuccessAnimation();
-    if (state.settings.autoDownload) {
-      handleDownloadAll();
-    }
+    if (state.settings.autoDownload) handleDownloadAll();
   } else {
-    ui.setStatus('Conversion failed. Check the messages above and try again.', 'error');
+    ui.setStatus('Conversion failed for every file. Check the messages above and try again.', 'error');
   }
 
+  refreshButtons();
+}
+
+function renderAllResults() {
+  for (const kind of KINDS) {
+    const items = state.results[kind].map((r) => ({
+      id: r.id,
+      title: r.title,
+      beforeURL: r.beforeURL,
+      afterURL: r.url,
+      outputWidth: r.outputWidth,
+      outputHeight: r.outputHeight,
+      originalWidth: r.originalWidth,
+      originalHeight: r.originalHeight,
+    }));
+    ui.renderResults(kind, items);
+  }
+}
+
+function handleRemoveResult(kind, id) {
+  const index = state.results[kind].findIndex((r) => r.id === id);
+  if (index === -1) return;
+  const [removed] = state.results[kind].splice(index, 1);
+  revokeSafe(removed.url);
+  revokeSafe(removed.beforeURL);
+  renderAllResults();
   refreshButtons();
 }
 
@@ -308,22 +391,19 @@ async function handleConvert() {
 
 function handleReset() {
   for (const kind of KINDS) {
-    revokeSafe(state.previewURL[kind]);
-    revokeSafe(state.results[kind]?.url);
-    state.files[kind] = null;
-    state.dims[kind] = null;
-    state.zoneValid[kind] = false;
-    state.previewURL[kind] = null;
-    state.results[kind] = null;
-
-    ui.setZoneMeta(kind, '');
-    ui.setZoneError(kind, null);
-    ui.setZoneLoaded(kind, false);
-    ui.hideResult(kind);
+    for (const item of state.queue[kind]) revokeSafe(item.previewURL);
+    for (const result of state.results[kind]) {
+      revokeSafe(result.url);
+      revokeSafe(result.beforeURL);
+    }
+    state.queue[kind] = [];
+    state.results[kind] = [];
+    refreshQueueUI(kind);
   }
 
+  renderAllResults();
   ui.setProgress(null);
-  ui.setStatus('Upload a shirt and/or pants template to begin.');
+  ui.setStatus('Upload shirt and/or pants templates to begin (up to 20 each).');
   refreshButtons();
 }
 
@@ -331,15 +411,21 @@ function handleReset() {
 // Downloads
 // ---------------------------------------------------------------------
 
-/** Decides output filenames per the spec: a single result gets the plain
- *  name, multiple simultaneous results get the numbered variant. */
+/** Decides output filenames: a single result gets the plain name, a batch
+ *  gets sequentially numbered names per garment type. */
 function computeFilenames() {
-  const present = KINDS.filter((k) => state.results[k]);
-  if (present.length <= 1) {
-    return Object.fromEntries(present.map((k) => [k, 'Polytoria_Template.png']));
+  const shirtCount = state.results.shirt.length;
+  const pantsCount = state.results.pants.length;
+  if (shirtCount + pantsCount === 1) {
+    return {
+      shirt: shirtCount === 1 ? ['Polytoria_Template.png'] : [],
+      pants: pantsCount === 1 ? ['Polytoria_Template.png'] : [],
+    };
   }
-  const order = { shirt: 1, pants: 2 };
-  return Object.fromEntries(present.map((k) => [k, `Polytoria_Template_${order[k]}.png`]));
+  return {
+    shirt: state.results.shirt.map((_, i) => `Polytoria_Shirt_${i + 1}.png`),
+    pants: state.results.pants.map((_, i) => `Polytoria_Pants_${i + 1}.png`),
+  };
 }
 
 function triggerBlobDownload(blob, filename) {
@@ -357,40 +443,52 @@ function triggerBlobDownload(blob, filename) {
   }
 }
 
-function handleDownloadSingle(kind) {
-  const result = state.results[kind];
-  if (!result) return;
+function handleDownloadSingle(kind, id) {
+  const index = state.results[kind].findIndex((r) => r.id === id);
+  if (index === -1) return;
   const filenames = computeFilenames();
-  triggerBlobDownload(result.blob, filenames[kind]);
+  triggerBlobDownload(state.results[kind][index].blob, filenames[kind][index]);
 }
 
 function handleDownloadAll() {
-  const present = KINDS.filter((k) => state.results[k]);
-  if (present.length === 0) {
+  const total = state.results.shirt.length + state.results.pants.length;
+  if (total === 0) {
     ui.showToast('Nothing to download yet — convert a template first.', 'info');
     return;
   }
+  if (total > 8) {
+    ui.showToast(
+      `Downloading ${total} files individually — your browser may prompt to allow multiple downloads. ZIP is recommended for large batches.`,
+      'info'
+    );
+  }
   const filenames = computeFilenames();
-  present.forEach((kind, index) => {
-    setTimeout(() => triggerBlobDownload(state.results[kind].blob, filenames[kind]), index * 250);
-  });
+  let delayIndex = 0;
+  for (const kind of KINDS) {
+    state.results[kind].forEach((result, index) => {
+      const filename = filenames[kind][index];
+      setTimeout(() => triggerBlobDownload(result.blob, filename), delayIndex * 250);
+      delayIndex += 1;
+    });
+  }
 }
 
 async function handleDownloadZip() {
-  const present = KINDS.filter((k) => state.results[k]);
-  if (present.length === 0) {
+  const total = state.results.shirt.length + state.results.pants.length;
+  if (total === 0) {
     ui.showToast('Nothing to download yet — convert a template first.', 'info');
     return;
   }
 
   try {
     const filenames = computeFilenames();
-    const entries = await Promise.all(
-      present.map(async (kind) => ({
-        name: filenames[kind],
-        data: new Uint8Array(await state.results[kind].blob.arrayBuffer()),
-      }))
-    );
+    const entries = [];
+    for (const kind of KINDS) {
+      for (let index = 0; index < state.results[kind].length; index += 1) {
+        const result = state.results[kind][index];
+        entries.push({ name: filenames[kind][index], data: new Uint8Array(await result.blob.arrayBuffer()) });
+      }
+    }
     const zipBlob = createZip(entries);
     triggerBlobDownload(zipBlob, 'Polytoria_Templates.zip');
   } catch (error) {
@@ -402,31 +500,59 @@ async function handleDownloadZip() {
 // History (undo/redo)
 // ---------------------------------------------------------------------
 
-function pushHistory(kinds) {
-  // A fresh conversion after an undo discards the redo branch, releasing
-  // its object URLs so they don't leak.
+/** Clones a live result into an entry-owned copy with its own independent URLs. */
+function cloneResultForHistory(result) {
+  return {
+    id: result.id,
+    title: result.title,
+    blob: result.blob,
+    sourceFile: result.sourceFile,
+    url: URL.createObjectURL(result.blob),
+    beforeURL: URL.createObjectURL(result.sourceFile),
+    outputWidth: result.outputWidth,
+    outputHeight: result.outputHeight,
+    originalWidth: result.originalWidth,
+    originalHeight: result.originalHeight,
+  };
+}
+
+/** Clones an entry's result into a fresh live-owned copy (mirrors cloneResultForHistory). */
+function cloneResultFromHistory(entryResult) {
+  return {
+    id: entryResult.id,
+    title: entryResult.title,
+    blob: entryResult.blob,
+    sourceFile: entryResult.sourceFile,
+    url: URL.createObjectURL(entryResult.blob),
+    beforeURL: URL.createObjectURL(entryResult.sourceFile),
+    outputWidth: entryResult.outputWidth,
+    outputHeight: entryResult.outputHeight,
+    originalWidth: entryResult.originalWidth,
+    originalHeight: entryResult.originalHeight,
+  };
+}
+
+function historySummaries() {
+  return state.history.map((entry) => ({
+    timestamp: entry.timestamp,
+    shirtCount: entry.shirtCount,
+    pantsCount: entry.pantsCount,
+  }));
+}
+
+function pushHistory() {
   if (state.historyIndex < state.history.length - 1) {
     const discarded = state.history.splice(state.historyIndex + 1);
     for (const entry of discarded) revokeEntryUrls(entry);
   }
 
-  // Every entry gets its OWN object URLs (for both the "before" file and
-  // the "after" blob), created fresh from the same underlying File/Blob
-  // rather than reusing the live state's URLs. Object URLs are cheap,
-  // independently-revocable pointers to the same bytes, so this lets the
-  // live working set and every history entry revoke their own URL without
-  // ever invalidating another owner's copy (e.g. Reset must never break a
-  // thumbnail still shown in the History panel).
   const entry = {
     timestamp: Date.now(),
-    kinds,
-    originals: {
-      shirt: state.results.shirt && state.files.shirt ? URL.createObjectURL(state.files.shirt) : null,
-      pants: state.results.pants && state.files.pants ? URL.createObjectURL(state.files.pants) : null,
-    },
+    shirtCount: state.results.shirt.length,
+    pantsCount: state.results.pants.length,
     results: {
-      shirt: state.results.shirt ? { ...state.results.shirt, url: URL.createObjectURL(state.results.shirt.blob) } : null,
-      pants: state.results.pants ? { ...state.results.pants, url: URL.createObjectURL(state.results.pants.blob) } : null,
+      shirt: state.results.shirt.map(cloneResultForHistory),
+      pants: state.results.pants.map(cloneResultForHistory),
     },
   };
 
@@ -438,14 +564,16 @@ function pushHistory(kinds) {
   }
 
   state.historyIndex = state.history.length - 1;
-  ui.renderHistory(state.history, state.historyIndex);
+  ui.renderHistory(historySummaries(), state.historyIndex);
   ui.setUndoRedoEnabled(state.historyIndex > 0, false);
 }
 
 function revokeEntryUrls(entry) {
   for (const kind of KINDS) {
-    if (entry.results[kind]) revokeSafe(entry.results[kind].url);
-    if (entry.originals[kind]) revokeSafe(entry.originals[kind]);
+    for (const result of entry.results[kind]) {
+      revokeSafe(result.url);
+      revokeSafe(result.beforeURL);
+    }
   }
 }
 
@@ -456,33 +584,19 @@ function restoreHistoryEntry(index) {
   state.historyIndex = index;
 
   for (const kind of KINDS) {
-    // Whatever the live slot currently points to is about to be replaced
-    // or cleared — revoke it first (it's always an independent clone, see
-    // pushHistory/handleConvert, so this never touches a URL another
-    // history entry still owns).
-    revokeSafe(state.results[kind]?.url);
-
-    const result = entry.results[kind];
-    if (result) {
-      // Clone yet another independent URL for the live copy so a later
-      // Reset can revoke it without touching this history entry's own URL.
-      const liveResult = { ...result, url: URL.createObjectURL(result.blob) };
-      state.results[kind] = liveResult;
-      ui.renderResult(kind, {
-        beforeURL: entry.originals[kind] || liveResult.url,
-        afterURL: liveResult.url,
-        outputWidth: liveResult.outputWidth,
-        outputHeight: liveResult.outputHeight,
-        originalWidth: liveResult.originalWidth,
-        originalHeight: liveResult.originalHeight,
-      });
-    } else {
-      state.results[kind] = null;
-      ui.hideResult(kind);
+    for (const result of state.results[kind]) {
+      revokeSafe(result.url);
+      revokeSafe(result.beforeURL);
     }
   }
 
-  ui.renderHistory(state.history, state.historyIndex);
+  state.results = {
+    shirt: entry.results.shirt.map(cloneResultFromHistory),
+    pants: entry.results.pants.map(cloneResultFromHistory),
+  };
+
+  renderAllResults();
+  ui.renderHistory(historySummaries(), state.historyIndex);
   ui.setUndoRedoEnabled(state.historyIndex > 0, state.historyIndex < state.history.length - 1);
   ui.setStatus(`Restored conversion from ${new Date(entry.timestamp).toLocaleTimeString()}.`);
   refreshButtons();
@@ -503,18 +617,15 @@ function handleRedo() {
 // ---------------------------------------------------------------------
 
 function refreshButtons() {
-  const hasValidUpload = KINDS.some((k) => state.files[k] && state.zoneValid[k]);
-  const hasResults = KINDS.some((k) => state.results[k]);
-  const hasMultipleResults = KINDS.filter((k) => state.results[k]).length > 1;
+  const hasValidQueueItems = KINDS.some((k) => state.queue[k].some((item) => item.valid));
+  const hasAnyQueueItems = KINDS.some((k) => state.queue[k].length > 0);
+  const hasResults = KINDS.some((k) => state.results[k].length > 0);
+  const hasMultipleResults = state.results.shirt.length + state.results.pants.length > 1;
 
   ui.setButtonsEnabled({
-    convert: hasValidUpload && !state.converting,
-    reset: (hasValidUpload || hasResults) && !state.converting,
+    convert: hasValidQueueItems && !state.converting,
+    reset: (hasAnyQueueItems || hasResults) && !state.converting,
     download: hasResults,
     downloadZip: hasMultipleResults,
   });
-}
-
-function capitalize(text) {
-  return text.charAt(0).toUpperCase() + text.slice(1);
 }

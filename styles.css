@@ -266,7 +266,25 @@ main {
 .dropzone.dz-error-state { border-color: var(--danger); }
 
 .dz-icon { font-size: 2.4rem; margin-bottom: var(--space-2); }
-.dz-title { font-weight: 700; font-size: 1.15rem; margin-bottom: var(--space-1); }
+.dz-title {
+  font-weight: 700;
+  font-size: 1.15rem;
+  margin-bottom: var(--space-1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+.dz-count {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+}
 .dz-hint { color: var(--text-dim); font-size: 0.9rem; margin: 0 0 var(--space-3); }
 
 .dz-browse {
@@ -281,8 +299,57 @@ main {
 }
 .dz-browse:hover { transform: translateY(-1px); background: var(--surface); }
 
-.dz-meta { margin: var(--space-3) 0 0; font-size: 0.82rem; color: var(--text-dim); font-family: var(--font-mono); min-height: 1.1em; }
-.dz-error { margin: var(--space-1) 0 0; font-size: 0.82rem; color: var(--danger); font-weight: 600; min-height: 1.1em; }
+.dz-error { margin: var(--space-2) 0 0; font-size: 0.82rem; color: var(--danger); font-weight: 600; min-height: 1.1em; }
+
+.dz-queue {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: 220px;
+  overflow-y: auto;
+  text-align: left;
+}
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.78rem;
+}
+.queue-item-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.queue-item-meta {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+.queue-item-error .queue-item-meta { color: var(--danger); font-weight: 600; }
+.queue-item-remove {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  line-height: 1;
+  font-size: 0.72rem;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.queue-item-remove:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
 
 /* ----------------------------- Toolbar ------------------------------------ */
 
@@ -391,10 +458,15 @@ select {
 
 /* ----------------------------- Results / compare --------------------------- */
 
-.results { display: grid; gap: var(--space-5); }
+.results { display: grid; gap: var(--space-6); }
 
-.result-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
-.result-head h2 { margin: 0; font-size: 1.2rem; display: flex; align-items: center; gap: var(--space-2); }
+.result-group h2 {
+  margin: 0 0 var(--space-4);
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
 .badge {
   font-size: 0.68rem;
   font-weight: 700;
@@ -404,8 +476,25 @@ select {
   border-radius: 999px;
   background: color-mix(in srgb, var(--success) 20%, transparent);
   color: var(--success);
+  font-family: var(--font-mono);
 }
-.result-meta { margin: 0; font-size: 0.82rem; color: var(--text-dim); font-family: var(--font-mono); }
+
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-4);
+}
+
+.result-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.result-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.result-meta { margin: 0; font-size: 0.76rem; color: var(--text-dim); font-family: var(--font-mono); }
 
 .result-hint {
   margin: var(--space-2) 0 0;
@@ -511,6 +600,16 @@ select {
   gap: var(--space-3);
   margin-top: var(--space-4);
 }
+
+.result-buttons { display: flex; gap: var(--space-2); }
+.result-buttons .btn { padding: 0.5rem 0.9rem; font-size: 0.85rem; }
+
+.btn-ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+.btn-ghost:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
 
 /* ----------------------------- Success overlay ---------------------------- */
 

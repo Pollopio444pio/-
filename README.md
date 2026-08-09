@@ -2,19 +2,27 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run and deploy your AI Studio app
+# PolloChat 🐔💬
 
-This contains everything you need to run your app locally.
+App de mensajería y llamadas al estilo WhatsApp, construida con React + Vite + TypeScript.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1V_I_xtF76UZ7rNGXjXf2alPjUhqqw2YE
+## Funcionalidades
 
-## Run Locally
+- Lista de chats con búsqueda, estado en línea, mensajes no leídos y última hora.
+- Conversaciones con burbujas de mensaje, confirmaciones de lectura (✓✓), indicador de "escribiendo…" y stickers.
+- Selector de stickers para enviar en el chat.
+- Llamadas de voz y videollamadas con temporizador, silenciar/activar micrófono, cámara (vista previa real con tu webcam) y altavoz.
+- Reacciones/stickers flotantes durante la llamada, tanto propias como del contacto.
+- Llamadas entrantes simuladas para probar el flujo de aceptar/rechazar.
+- Modo claro/oscuro persistente.
+- Respuestas de los contactos generadas con Gemini (si configuras tu API key) o con un set de respuestas de reserva si no la configuras.
 
-**Prerequisites:**  Node.js
+## Ejecutar en local
 
+**Requisitos:** Node.js
 
-1. Install dependencies:
+1. Instala las dependencias:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. (Opcional) Define `GEMINI_API_KEY` en [.env.local](.env.local) con tu API key de Gemini para que los contactos respondan con IA.
+3. Ejecuta la app:
    `npm run dev`
